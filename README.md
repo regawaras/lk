@@ -25,21 +25,21 @@ Since LogKlerk is a collection of shell functions and aliases, it needs to be **
 **1. Download the script:**
 ```bash
 mkdir -p ~/.config/logklerk
-curl -o ~/.config/logklerk/logklerk.sh [https://raw.githubusercontent.com/regawaras/lk/main/logklerk.sh](https://raw.githubusercontent.com/regawaras/lk/main/logklerk.sh)
+curl -o ~/.config/logklerk/lk.sh [https://raw.githubusercontent.com/regawaras/lk/main/lk.sh](https://raw.githubusercontent.com/regawaras/lk/main/lk.sh)
 ```
 
 **2. Source it in your shell profile:**
 
 For **Bash/Zsh** (`~/.bashrc` or `~/.zshrc`):
 ```bash
-echo '. "$HOME/.config/logklerk/logklerk.sh"' >> ~/.bashrc
+echo '. "$HOME/.config/logklerk/lk.sh"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 For strict **POSIX/Dash** (`~/.profile` and `~/.shinit`):
 ```bash
 echo 'export ENV="$HOME/.shinit"' >> ~/.profile
-echo '. "$HOME/.config/logklerk/logklerk.sh"' >> ~/.shinit
+echo '. "$HOME/.config/logklerk/lk.sh"' >> ~/.shinit
 ```
 
 ---
