@@ -1,6 +1,5 @@
 # lk
 ⚡ A lightning-fast, POSIX-compliant terminal journaling system. Features chronological logging, dynamic tags, XDG-standard paths, and hybrid interactive modes for dash/bash/zsh.
-Berikut adalah versi mentah (raw) dari `README.md` yang sangat teknikal, rapi, dan siap Anda *copy-paste* langsung ke repositori GitHub Anda. 
 
 # 🗃️ LogKlerk (LK)
 
