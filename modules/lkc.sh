@@ -1,4 +1,4 @@
-# LK Chronological Reader Modules (lkc)
+# Modul: Chronological Reader (lkc)
 lkc() {
     _lk_get_time
     lkc_filename="$LK_DIR/$YEAR/$MONTH/$TODAY.md"
