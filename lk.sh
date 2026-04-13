@@ -60,6 +60,7 @@ _lk_helper() {
     local CATEGORY_STRING="$1"
     shift
 
+    # Setup penambahan tag dinamis (disimpan ke config agar tidak hilang saat pindah dir)
     if [ "$1" = "-add" ]; then
         shift
         local alias_name="$1"
@@ -110,17 +111,20 @@ _lk_helper() {
                     *) new_dir="$target_arg" ;;
                 esac
                 
+                # Simpan config permanen
                 mkdir -p "$LK_CONFIG_DIR"
                 echo "LK_DIR=\"$new_dir\"" > "$LK_CONFIG_FILE"
                 mkdir -p "$new_dir"
                 
                 printf "\033[32mSuccess: LogKlerk data directory changed to -> %s\033[0m\n" "$new_dir"
                 
+                # Cek jika ada log lama
                 if [ "$LK_DIR" != "$new_dir" ] && [ -d "$LK_DIR" ]; then
                     printf "\033[33mNote: Your old logs remain in: %s\033[0m\n" "$LK_DIR"
                     printf "To migrate them, run: \033[36mmv \"%s\"/* \"%s\"/\033[0m\n" "$LK_DIR" "$new_dir"
                 fi
                 
+                # Update variabel untuk sesi saat ini
                 LK_DIR="$new_dir"
                 ;;
             *)
@@ -221,6 +225,7 @@ _lk_interactive_mode() {
                             
                             printf "\033[32mDirectory changed to -> %s\033[0m\n" "$new_dir"
                             LK_DIR="$new_dir"
+                            # Re-evaluasi nama file jika dir berubah di mode interaktif
                             FILENAME="$LK_DIR/$YEAR/$MONTH/$TODAY.md"
                             ;;
                         *)
@@ -290,7 +295,7 @@ _lk_set_daily_summary() {
 }
 
 _lk_set_summary() {
-    TIME_INPUT="$1"  # Hilangkan penggunaan 'local' untuk kompatibilitas POSIX murni
+    TIME_INPUT="$1"
     shift
     SUMMARY_TEXT="$*"
     _lk_get_time
@@ -306,13 +311,25 @@ _lk_set_summary() {
         printf "%screated: [[%s]] - %s\n" "$INDENT_4" "$TODAY" "$FULL_TIMESTAMP" >> "$FILENAME"
     fi
 
-    # Strip nol di depan menggunakan parameter expansion bawaan shell (100% POSIX, lebih aman dari sed)
-    START_H_RAW=$(echo "$TIME_INPUT" | cut -d'-' -f1 | tr -cd '0-9')
-    END_H_RAW=$(echo "$TIME_INPUT" | cut -d'-' -f2 | tr -cd '0-9')
-    
-    # Force base-10 dengan menghapus leading zeros secara aman
-    START_H=$(printf '%d' "${START_H_RAW:-0}" 2>/dev/null || echo 0)
-    END_H=$(printf '%d' "${END_H_RAW:-$START_H}" 2>/dev/null || echo 0)
+    # 1. Ekstraksi input dan pisahkan rentang jam (jika ada)
+    case "$TIME_INPUT" in
+        *-*)
+            START_H_RAW=$(echo "$TIME_INPUT" | cut -d'-' -f1 | tr -cd '0-9')
+            END_H_RAW=$(echo "$TIME_INPUT" | cut -d'-' -f2 | tr -cd '0-9')
+            ;;
+        *)
+            START_H_RAW=$(echo "$TIME_INPUT" | tr -cd '0-9')
+            END_H_RAW="$START_H_RAW"
+            ;;
+    esac
+
+    # 2. Hapus angka nol di depan (leading zeros) SECARA STRING untuk menghindari Octal Trap
+    START_H=$(echo "$START_H_RAW" | sed 's/^0*//')
+    END_H=$(echo "$END_H_RAW" | sed 's/^0*//')
+
+    # 3. Jika input aslinya adalah "00" atau "0", sed akan membuatnya kosong. Kembalikan ke angka 0
+    [ -z "$START_H" ] && START_H=0
+    [ -z "$END_H" ] && END_H=0
 
     TMP_FILE=$(mktemp)
 
@@ -321,7 +338,7 @@ _lk_set_summary() {
         HOUR_FORMAT=$(printf "%02d:00" "$current_hour_idx")
         NEW_HEADER="${INDENT_4}- $HOUR_FORMAT - $SUMMARY_TEXT"
         
-        # Perbaikan SED: Gunakan kombinasi single quote untuk menghindari escape sequence dash
+        # Perbaikan SED: Pembungkusan dengan single quote dan integrasi variabel secara presisi
         sed '3,$ { /^'"${INDENT_4}"'- '"$HOUR_FORMAT"' -/d; }' "$FILENAME" > "$TMP_FILE" && mv "$TMP_FILE" "$FILENAME"
         
         printf "%s\n" "$NEW_HEADER" >> "$FILENAME"
@@ -619,10 +636,17 @@ lks() {
 
 # --- Core Global Taxonomy ---
 lk() { _lk_helper "" "$@"; }
+wbl() { _lk_helper "[[Website Links]] >>" "$@"; }
 sog() { _lk_helper "[[Searching on Google]] >>" "$@"; }
+sogi() { _lk_helper "[[Searching on Google Images]] >>" "$@"; }
 todo() { _lk_helper "[[TODO]] >>" "$@"; }
 ideas() { _lk_helper "[[IDEAS]] >>" "$@"; }
-problems() { _lk_helper "[[Problems/Troubleshooting]] >>" "$@"; }
+comfyui() { _lk_helper "[[ComfyUI]] >>" "$@"; }
+q() { _lk_helper "[[Question]] >>" "$@"; }
+qs() { _lk_helper "[[Question for Search Later]] >>" "$@"; }
+gam() { _lk_helper "[[Google AI Mode]] >>" "$@"; }
+problems() { _lk_helper "[[Problems Troubleshooting]] >>" "$@"; }
+resthink() { _lk_helper "[[Got An Idea from ResThink]] >>" "$@"; }
 
 # Load external custom tags
 if [ -f "$LK_TAGS_FILE" ]; then
@@ -662,3 +686,5 @@ lkh() {
 }
 
 alias clkm='clk -m'
+alias vlkc='sudo vim .config/logklerk/logklerk.sh'
+alias lkc='clk'
