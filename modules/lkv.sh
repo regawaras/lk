@@ -4,12 +4,13 @@ lkv() {
         # --- System & Config Editor Flags ---
         -taxonomy)
             ${EDITOR:-vim} "$LK_TAXONOMY_FILE"
+            # Hot-reload taxonomy setelah diedit
             . "$LK_TAXONOMY_FILE"
             return 0 ;;
         -config|-dir)
             ${EDITOR:-vim} "$LK_CONFIG_FILE"
             return 0 ;;
-        -aliases)
+        -alias|-aliases) # Mendukung pengetikan singular (-alias) maupun plural (-aliases)
             ${EDITOR:-vim} "$LK_MODULES_DIR/aliases.sh"
             return 0 ;;
         -lkc)
@@ -21,7 +22,7 @@ lkv() {
         -lks)
             ${EDITOR:-vim} "$LK_MODULES_DIR/lks.sh"
             return 0 ;;
-        -lkv)
+        -lkv|-vlk) # Mendukung nama lama sebagai fallback memori otot
             ${EDITOR:-vim} "$LK_MODULES_DIR/lkv.sh"
             return 0 ;;
         -lk)
@@ -39,14 +40,16 @@ lkv() {
             return 0
             ;;
         "") 
+            # Kosong = lanjut ke bawah (edit log hari ini)
             ;;
         *)
             printf "\033[31mInvalid flag or date format.\033[0m\n"
-            printf "Usage: lkv [YYYY-MM-DD] | -lk | -taxonomy | -config | -aliases | -lkc | -lkh | -lks | -lkv\n"
+            printf "Usage: lkv [YYYY-MM-DD] | -lk | -taxonomy | -config | -alias | -lkc | -lkh | -lks | -lkv\n"
             return 1
             ;;
     esac
 
+    # Edit log hari ini (Default fallback)
     _lk_get_time
     lkv_dir="$LK_DIR/$YEAR/$MONTH"
     mkdir -p "$lkv_dir"
