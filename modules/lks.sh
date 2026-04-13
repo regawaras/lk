@@ -1,4 +1,3 @@
-# LK Search Modules (lks)
 lks() {
     lks_pattern="*.md"
     lks_hour=""
