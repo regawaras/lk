@@ -290,14 +290,14 @@ _lk_set_daily_summary() {
 }
 
 _lk_set_summary() {
-    local TIME_INPUT="$1"
+    TIME_INPUT="$1"  # Hilangkan penggunaan 'local' untuk kompatibilitas POSIX murni
     shift
-    local SUMMARY_TEXT="$*"
+    SUMMARY_TEXT="$*"
     _lk_get_time
     
-    local TARGET_DIR="$LK_DIR/$YEAR/$MONTH"
-    local FILENAME="$TARGET_DIR/$TODAY.md"
-    local INDENT_4="    "
+    TARGET_DIR="$LK_DIR/$YEAR/$MONTH"
+    FILENAME="$TARGET_DIR/$TODAY.md"
+    INDENT_4="    "
 
     mkdir -p "$TARGET_DIR"
 
@@ -306,33 +306,26 @@ _lk_set_summary() {
         printf "%screated: [[%s]] - %s\n" "$INDENT_4" "$TODAY" "$FULL_TIMESTAMP" >> "$FILENAME"
     fi
 
-    local START_H END_H
-    case "$TIME_INPUT" in
-        *-*)
-            START_H=$(echo "$TIME_INPUT" | cut -d'-' -f1 | tr -cd '0-9' | sed 's/^0*//')
-            END_H=$(echo "$TIME_INPUT" | cut -d'-' -f2 | tr -cd '0-9' | sed 's/^0*//')
-            ;;
-        *)
-            START_H=$(echo "$TIME_INPUT" | tr -cd '0-9' | sed 's/^0*//')
-            END_H=$START_H
-            ;;
-    esac
+    # Strip nol di depan menggunakan parameter expansion bawaan shell (100% POSIX, lebih aman dari sed)
+    START_H_RAW=$(echo "$TIME_INPUT" | cut -d'-' -f1 | tr -cd '0-9')
+    END_H_RAW=$(echo "$TIME_INPUT" | cut -d'-' -f2 | tr -cd '0-9')
+    
+    # Force base-10 dengan menghapus leading zeros secara aman
+    START_H=$(printf '%d' "${START_H_RAW:-0}" 2>/dev/null || echo 0)
+    END_H=$(printf '%d' "${END_H_RAW:-$START_H}" 2>/dev/null || echo 0)
 
-    [ -z "$START_H" ] && START_H=0
-    [ -z "$END_H" ] && END_H=0
-
-    local TMP_FILE
     TMP_FILE=$(mktemp)
 
-    local h=$START_H
-    while [ "$h" -le "$END_H" ]; do
-        local HOUR_FORMAT
-        HOUR_FORMAT=$(printf "%02d:00" "$h")
-        local NEW_HEADER="${INDENT_4}- $HOUR_FORMAT - $SUMMARY_TEXT"
+    current_hour_idx=$START_H
+    while [ "$current_hour_idx" -le "$END_H" ]; do
+        HOUR_FORMAT=$(printf "%02d:00" "$current_hour_idx")
+        NEW_HEADER="${INDENT_4}- $HOUR_FORMAT - $SUMMARY_TEXT"
         
-        sed "3,\$ { /^${INDENT_4}- $HOUR_FORMAT -/d; }" "$FILENAME" > "$TMP_FILE" && mv "$TMP_FILE" "$FILENAME"
+        # Perbaikan SED: Gunakan kombinasi single quote untuk menghindari escape sequence dash
+        sed '3,$ { /^'"${INDENT_4}"'- '"$HOUR_FORMAT"' -/d; }' "$FILENAME" > "$TMP_FILE" && mv "$TMP_FILE" "$FILENAME"
+        
         printf "%s\n" "$NEW_HEADER" >> "$FILENAME"
-        h=$((h + 1))
+        current_hour_idx=$((current_hour_idx + 1))
     done
 
     head -n 2 "$FILENAME" > "$TMP_FILE"
