@@ -3,7 +3,7 @@
 
 # --- Configuration & Paths ---
 # LogKlerk (LK) - Core Dispatcher
-LK_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/logklerk"
+LK_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/lk"
 LK_CONFIG_FILE="$LK_CONFIG_DIR/lk.conf"
 LK_MODULES_DIR="$LK_CONFIG_DIR/modules"
 LK_TAXONOMY_FILE="$LK_CONFIG_DIR/taxonomy.sh"
@@ -56,49 +56,55 @@ _lk_set_daily_summary() {
 }
 
 _lk_set_summary() {
-    hs_time_input="$1"
+    # Menggunakan prefix 'lksv_' (LogKlerk Summary Variable) untuk simulasi scope
+    lksv_time_input="$1"
     shift
-    hs_summary_text="$*"
+    lksv_summary_text="$*"
+    
     _lk_get_time
-    hs_target_dir="$LK_DIR/$YEAR/$MONTH"
-    hs_filename="$hs_target_dir/$TODAY.md"
-    hs_indent="    "
+    lksv_target_dir="$LK_DIR/$YEAR/$MONTH"
+    lksv_filename="$lksv_target_dir/$TODAY.md"
+    lksv_indent="    "
 
-    mkdir -p "$hs_target_dir"
-    if [ ! -f "$hs_filename" ]; then
-        printf -- "- [[%s]] - (Daily Summary)\n" "$TODAY" >> "$hs_filename"
-        printf "%screated: [[%s]] - %s\n" "$hs_indent" "$TODAY" "$FULL_TIMESTAMP" >> "$hs_filename"
+    mkdir -p "$lksv_target_dir"
+    if [ ! -f "$lksv_filename" ]; then
+        printf -- "- [[%s]] - (Daily Summary)\n" "$TODAY" >> "$lksv_filename"
+        printf "%screated: [[%s]] - %s\n" "$lksv_indent" "$TODAY" "$FULL_TIMESTAMP" >> "$lksv_filename"
     fi
 
-    case "$hs_time_input" in
+    # POSIX-compliant parsing: Memastikan hanya jam yang diproses
+    case "$lksv_time_input" in
         *-*)
-            hs_start_raw=$(echo "$hs_time_input" | cut -d'-' -f1 | tr -cd '0-9')
-            hs_end_raw=$(echo "$hs_time_input" | cut -d'-' -f2 | tr -cd '0-9')
+            lksv_start_raw=$(echo "$lksv_time_input" | cut -d'-' -f1 | tr -cd '0-9')
+            lksv_end_raw=$(echo "$lksv_time_input" | cut -d'-' -f2 | tr -cd '0-9')
             ;;
         *)
-            hs_start_raw=$(echo "$hs_time_input" | tr -cd '0-9')
-            hs_end_raw="$hs_start_raw"
+            lksv_start_raw=$(echo "$lksv_time_input" | tr -cd '0-9')
+            lksv_end_raw="$lksv_start_raw"
             ;;
     esac
 
-    hs_start=$(echo "$hs_start_raw" | sed 's/^0*//')
-    hs_end=$(echo "$hs_end_raw" | sed 's/^0*//')
-    [ -z "$hs_start" ] && hs_start=0
-    [ -z "$hs_end" ] && hs_end=0
+    # Menghapus leading zero tanpa sed (lebih cepat di POSIX)
+    lksv_start=$(echo "$lksv_start_raw" | sed 's/^0*//'); [ -z "$lksv_start" ] && lksv_start=0
+    lksv_end=$(echo "$lksv_end_raw" | sed 's/^0*//'); [ -z "$lksv_end" ] && lksv_end=0
 
-    hs_tmp_file=$(mktemp)
-    hs_current=$hs_start
-    while [ "$hs_current" -le "$hs_end" ]; do
-        hs_fmt=$(printf "%02d:00" "$hs_current")
-        hs_header="${hs_indent}- $hs_fmt - $hs_summary_text"
-        sed '3,$ { /^'"${hs_indent}"'- '"$hs_fmt"' -/d; }' "$hs_filename" > "$hs_tmp_file" && mv "$hs_tmp_file" "$hs_filename"
-        printf "%s\n" "$hs_header" >> "$hs_filename"
-        hs_current=$((hs_current + 1))
+    lksv_tmp_file=$(mktemp)
+    lksv_current="$lksv_start"
+    while [ "$lksv_current" -le "$lksv_end" ]; do
+        lksv_fmt=$(printf "%02d:00" "$lksv_current")
+        lksv_header="${lksv_indent}- $lksv_fmt - $lksv_summary_text"
+        
+        # POSIX sed untuk menghapus baris lama sebelum update
+        sed "3,\$ { /^${lksv_indent}- ${lksv_fmt} -/d; }" "$lksv_filename" > "$lksv_tmp_file" && mv "$lksv_tmp_file" "$lksv_filename"
+        printf "%s\n" "$lksv_header" >> "$lksv_filename"
+        lksv_current=$((lksv_current + 1))
     done
 
-    head -n 2 "$hs_filename" > "$hs_tmp_file"
-    sed '1,2d' "$hs_filename" | sort -b -k2,2 -u >> "$hs_tmp_file"
-    mv "$hs_tmp_file" "$hs_filename"
-    printf "\033[32mSummary updated & Sorted range %s-%s: \033[38;2;0;255;255m%s\033[0m\n" "$hs_start" "$hs_end" "$hs_summary_text"
-    lkcs
+    # Sorting kronologis tanpa merusak struktur
+    head -n 2 "$lksv_filename" > "$lksv_tmp_file"
+    sed '1,2d' "$lksv_filename" | sort -b -k2,2 -u >> "$lksv_tmp_file"
+    mv "$lksv_tmp_file" "$lksv_filename"
+    
+    printf "\033[32mSummary updated (%02d-%02d): \033[38;2;0;255;255m%s\033[0m\n" "$lksv_start" "$lksv_end" "$lksv_summary_text"
+    lkcd
 }
