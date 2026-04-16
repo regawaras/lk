@@ -10,25 +10,24 @@ _lk_interactive_mode() {
     LK_BANNER_FILE="$LK_CONFIG_DIR/banner.txt"
     if [ -f "$LK_BANNER_FILE" ]; then
         printf "\033[?7l"
-        printf "\033[38;5;220m"
+        printf "\033[38;2;255;200;0m"
         cat "$LK_BANNER_FILE"
         printf "\033[0m\n"          
         printf "\033[?7h"
-        # Gunakan awk untuk kalkulasi baris yang lebih aman dari wc -l
         BANNER_LINES=$(awk 'END{print NR}' "$LK_BANNER_FILE" 2>/dev/null || echo 0)
         TUI_OFFSET=$((BANNER_LINES + 1))
     else
         TUI_OFFSET=0
     fi
     # ---
-    printf "\033[38;5;220m-------------- LK (Log Klerking) Structured Mode: Chronological --------------\033[0m\n"
-    printf "Notes entering hour block: %s\n" "$CURRENT_HOUR"
-    printf "Current Log Directory: %s\n" "$LK_DIR"
-    printf "\033[2mType -help for menu, or -exit to quit.\033[0m\n\n"
+	printf "\033[38;2;255;200;0m| >> ---------- LK (Log Klerking) Structured Mode: Chronological ---------- << |\033[0m\n"
+	printf "\033[2;38;2;255;117;0m| Type -help for menu or simply lkh, or -exit to quit.\033[0m\n"
+	printf "\033[2;38;2;255;117;0m| Current Log Directory: %s\033[0m\n" "$LK_DIR"
+	printf "\033[2;38;2;255;117;0m| Notes entering hour block: \033[0;1;38;2;255;200;0m%s\033[0m\n\n" "$CURRENT_HOUR"
     
-    TUI_START=$((TUI_OFFSET + 5))
-    printf "\033[%d;%dr" "$TUI_START" "$TERM_LINES"
-    printf "\033[%d;1H" "$TUI_START"
+    TUI_START=$((TUI_OFFSET + 6))
+    	printf "\033[%d;%dr" "$TUI_START" "$TERM_LINES"
+    	printf "\033[%d;1H" "$TUI_START"
 
         # --- 1. RENDER DYNAMIC PROMPT ---
 	disp_prompt=$(echo "$CATEGORY_STRING" | sed 's/ >>$//')
@@ -37,10 +36,9 @@ _lk_interactive_mode() {
         [ "$disp_filename" != "$FILENAME" ] && disp_filename="~/$disp_filename"
 
 	if [ -n "$disp_prompt" ]; then
-            # Menggunakan \n sebelum >> untuk melempar input ke baris baru
-            printf "\033[38;5;220mLog As %s to %s\033[0m\n>> " "$disp_prompt" "$disp_filename"
+            printf "\033[38;2;255;165;0m| Logging Mode as %s to %s\033[0m\n>> " "$disp_prompt" "$disp_filename"
         else
-            printf "\033[38;5;220mLog to %s\033[0m\n>> " "$disp_filename"
+            printf "\033[38;2;255;165;0m| Log to %s\033[0m\n>> " "$disp_filename"
         fi
 
         if ! read -r line; then break; fi
@@ -82,7 +80,8 @@ _lk_interactive_mode() {
                     clear
                     break ;;
                 lkc) lkc "$args" ;;
-                lkcs) lkcs "$args" ;;
+                lkcm) lkcm "$args" ;;
+                lkcd) lkcd "$args" ;;
                 lkch) lkch "$args" ;;
                 lkv) lkv "$args"; printf "\033[38;2;255;117;0m--- Returned to Interactive Mode ---\033[0m\n" ;;
                 *)
@@ -109,7 +108,7 @@ _lk_interactive_mode() {
                     fi
 
                     printf "\033[2m------------------------------------------------------------\033[0m\n"
-                    tail -n 3 "$FILENAME" | while IFS= read -r l; do
+                    tail -n 35 "$FILENAME" | while IFS= read -r l; do
                         if [ "$l" = "$LAST_RAW" ]; then printf "\033[38;5;123m%s [NEW]\033[0m\n" "$l"; else printf "%s\n" "$l"; fi
                     done
                     printf "\033[2m------------------------------------------------------------\033[0m\n"
