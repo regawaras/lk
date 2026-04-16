@@ -60,13 +60,13 @@ lkc() {
     esac
 }
 
-lkcs() {
+lkcd() {
     _lk_get_time
-    lkcs_fn="$LK_DIR/$YEAR/$MONTH/$TODAY.md"
-    [ ! -f "$lkcs_fn" ] && return 1
+    lkcd_fn="$LK_DIR/$YEAR/$MONTH/$TODAY.md"
+    [ ! -f "$lkcd_fn" ] && return 1
     printf "\033[38;2;255;117;0m--- Daily Hourly Summary (%s) ---\033[0m\n" "$TODAY"
-    head -n 1 "$lkcs_fn" | awk '{print "\033[38;2;255;255;0m" $0 "\033[0m"}'
-    grep "\- [0-2][0-9]:00 " "$lkcs_fn" | sed 's/^[[:space:]]*//' | awk '!seen[$2]++' | sort -k2,2 | while IFS= read -r line; do
+    head -n 1 "$lkcd_fn" | awk '{print "\033[38;2;255;255;0m" $0 "\033[0m"}'
+    grep "\- [0-2][0-9]:00 " "$lkcd_fn" | sed 's/^[[:space:]]*//' | awk '!seen[$2]++' | sort -k2,2 | while IFS= read -r line; do
         printf "\033[38;2;0;255;255m    %s\033[0m\n" "$line"
     done
     printf "\033[38;2;255;117;0m----------------------------------\033[0m\n"
