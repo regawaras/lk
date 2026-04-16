@@ -1,8 +1,8 @@
-# LK Visual Editor Module (lkv)
+# Modul: Visual Editor (lkv)
 lkv() { 
     case "$1" in
         # --- System & Config Editor Flags ---
-        -taxonomy)
+        -taxonomy|-tax|-t)
             ${EDITOR:-vim} "$LK_TAXONOMY_FILE"
             # Hot-reload taxonomy setelah diedit
             . "$LK_TAXONOMY_FILE"
@@ -22,11 +22,17 @@ lkv() {
         -lks)
             ${EDITOR:-vim} "$LK_MODULES_DIR/lks.sh"
             return 0 ;;
+        -lki)
+            ${EDITOR:-vim} "$LK_MODULES_DIR/lki.sh"
+            return 0 ;;
+        -banner)
+            ${EDITOR:-vim} "$LK_CONFIG_DIR/banner.txt"
+            return 0 ;;
         -lkv|-vlk) # Mendukung nama lama sebagai fallback memori otot
             ${EDITOR:-vim} "$LK_MODULES_DIR/lkv.sh"
             return 0 ;;
         -lk)
-            ${EDITOR:-vim} "$LK_CONFIG_DIR/logklerk.sh"
+            ${EDITOR:-vim} "$LK_CONFIG_DIR/lk.sh"
             return 0 ;;
             
         # --- Data Log Editor Flags ---
