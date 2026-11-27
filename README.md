@@ -46,7 +46,7 @@ echo '. "$HOME/.config/logklerk/lk.sh"' >> ~/.shinit
 
 ## 📖 Core Usage
 
-LogKlerk uses simple commands for its core loop: **Write (`lk`)**, **Read (`clk`)**, and **Search (`lks`)**.
+LogKlerk uses simple commands for its core loop: **Write (`lk`)**, **Read (`lkc`)**, and **Search (`lks`)**.
 
 ### 1. Writing Notes (`lk`)
 ```bash
@@ -64,13 +64,13 @@ sog "How to configure dash as default shell"
 problems "Kernel panic after updating NVIDIA drivers"
 ```
 
-### 2. Reading Notes (`clk`)
+### 2. Reading Notes (`lkc`)
 ```bash
-clk                 # View all notes for TODAY
-clks                # View today's main summaries (Daily & Hourly)
-clk 2026-04-12      # View notes from a specific date
-clk -m              # View all daily summaries for the current month
-clk 08-12           # View notes logged today between 08:00 and 12:00
+lkc                 # View all notes for TODAY
+lkcs                # View today's main summaries (Daily & Hourly)
+lkc 2026-04-12      # View notes from a specific date
+lkc -m              # View all daily summaries for the current month
+lkc 08-12           # View notes logged today between 08:00 and 12:00
 ```
 
 ### 3. Advanced Search (`lks`)
@@ -127,8 +127,8 @@ lk -set 08-10 "Deep Work: Database Refactoring"
 ### ⌨️ Manual Editing
 Need to fix a typo? Drop directly into your favorite `$EDITOR` (defaults to `vim`):
 ```bash
-vlk                 # Edit today's markdown file
-vlk 2026-04-10      # Edit a specific past date
+lkv                 # Edit today's markdown file
+lkv 2026-04-10      # Edit a specific past date
 ```
 
 ---
@@ -152,3 +152,4 @@ LogKlerk generates clean, readable Markdown files structured hierarchically by Y
 
 ## 📄 License
 This project is licensed under the MIT License. Feel free to fork, modify, and improve!
+
