@@ -1,0 +1,4 @@
+/rust/target/
+**/target/
+.DS_Store
+*.swp
