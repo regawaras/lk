@@ -1,0 +1,83 @@
+name: LogKlerk CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  # ==========================================
+  # 1. ASSEMBLY VERSION (GNU Assembler .asm)
+  # ==========================================
+  test-assembly:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: assembly
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GNU binutils & python3
+        run: sudo apt-get update && sudo apt-get install -y binutils python3
+
+      - name: Assemble & Link
+        run: |
+          as --64 -g -I . -I src src/main.asm -o lk.o
+          ld -z noexecstack -z relro -z now -o lk lk.o
+
+      - name: Run Assembly Fuzz & Security Tests
+        run: |
+          chmod +x tests/test_assembly.sh
+          ./tests/test_assembly.sh ./lk
+
+  # ==========================================
+  # 2. RUST VERSION (rust/)
+  # ==========================================
+  test-rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            rust/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+
+      - name: Build & Run Rust Tests
+        run: |
+          cargo build --release
+          cargo test
+
+  # ==========================================
+  # 3. POSIX SHELL VERSION (sh/)
+  # ==========================================
+  test-shell:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install POSIX dash & shellcheck
+        run: sudo apt-get update && sudo apt-get install -y dash shellcheck
+
+      - name: Lint & Test POSIX Shell
+        run: |
+          shellcheck -s sh lk.sh
+          TEST_HOME=$(mktemp -d)
+          HOME="$TEST_HOME" dash -c '. ./lk.sh && lk "CI test entry" && lkc | grep -q "CI test entry"'
+          rm -rf "$TEST_HOME"
+
