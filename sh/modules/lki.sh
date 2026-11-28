@@ -1,39 +1,39 @@
 #!/bin/sh
 # Module: lki (Standalone Interactive with Dynamic Taxonomy Parser & Hybrid Shell Logging)
+# Updated to v0.0.5: Global Zero-Subshell %b Formatting & Pure AWK Constants
 
 lki() {
     CATEGORY_STRING="$1"
 
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.4}"
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
     LK_TAXONOMY_FILE="${LK_CONFIG_DIR}/modules/context.sh"
     
-    LK_DIR="/run/media/nixos/c9a0990e-ba7f-4860-ba3b-1a7cd1182b50/home/regawaras/als/lk/"
+    LK_DIR="/srv/als/lk/"
     LK_DEFAULT_FORMAT=".md"
     
     LK_TAIL_LINES="10"
     LK_COMMAND_TAIL_LINES="1"
 
-    # Muat konfigurasi lebih dulu sebelum mendefinisikan warna
     [ -f "$LK_CONFIG_FILE" ] && . "$LK_CONFIG_FILE"
 
     # =========================================================================
-    # COLOR PALETTE CONFIGURATION (Namespace Protected)
+    # COLOR PALETTE CONFIGURATION (ZERO-SUBSHELL OVERHEAD)
     # =========================================================================
-    LK_RESET=$(printf '\033[0m')
-    LK_AMBER=$(printf '\033[38;2;255;204;0m')
-    LK_LIME=$(printf '\033[38;2;100;255;0m')
-    LK_GREY=$(printf '\033[38;2;150;150;150m') 
-    LK_CYAN=$(printf '\033[38;2;0;255;255m')
-    LK_PURPLE=$(printf '\033[38;2;180;100;255m')
-    LK_ORANGE=$(printf '\033[38;2;255;102;0m')
-    LK_DIM=$(printf '\033[2m')
-    LK_DARKGREY=$(printf '\033[38;2;105;105;105m')
-    LK_YELLOW=$(printf '\033[38;2;255;220;0m')
-    LK_MAGENTA=$(printf '\033[1;35m')
+    LK_RESET='\033[0m'
+    LK_AMBER='\033[38;2;255;204;0m'
+    LK_LIME='\033[38;2;100;255;0m'
+    LK_GREY='\033[38;2;150;150;150m' 
+    LK_CYAN='\033[38;2;0;255;255m'
+    LK_PURPLE='\033[38;2;180;100;255m'
+    LK_ORANGE='\033[38;2;225;102;0m'
+    LK_DIM='\033[2m'
+    LK_DARKGREY='\033[38;2;105;105;105m'
+    LK_YELLOW='\033[38;2;255;220;0m'
+    LK_MAGENTA='\033[38;2;255;100;255m'
     # =========================================================================
 
     _lki_update_vars() {
@@ -49,16 +49,16 @@ lki() {
         clear 
         
         if [ -f "$LK_CONFIG_DIR/assets/banner.txt" ]; then
-            printf "%s" "$LK_ORANGE"
+            printf "%b" "$LK_ORANGE"
             cat "$LK_CONFIG_DIR/assets/banner.txt"
-            printf "%s" "$LK_RESET"
+            printf "%b" "$LK_RESET"
         fi
         
-        printf "${LK_ORANGE} | LK LogKlerk %s %s | Github: https://github.com/regawaras/lk/ |\n${LK_RESET}" "$LK_STATUS" "$LK_VERSION"
-        printf "${LK_ORANGE} | ''Just Open Terminal, Type, Enter, Forget Brutal'' -LK LogKlerking Creator |\n${LK_RESET}" 
-        printf "${LK_GREY} | -------------- LK Interactive Mode (Hybrid Shell & Context) -------------- |\n${LK_RESET}"
-        printf "${LK_GREY} | Hour Block: ${LK_CYAN}%s${LK_GREY} | Source: %s |\n${LK_RESET}" "$CURRENT_HOUR" "$LK_CONFIG_DIR"
-        printf "\n"
+        # Penggunaan %b wajib untuk merender literal escape \033
+        printf "%b | LK LogKlerk %s %s | Github: https://github.com/regawaras/lk/ |\n%b" "$LK_ORANGE" "$LK_STATUS" "$LK_VERSION" "$LK_RESET"
+        printf "%b | ''Just Open Terminal, Type, Enter, Forget Brutal'' -LK LogKlerking Creator |\n%b" "$LK_ORANGE" "$LK_RESET"
+        printf "%b | -------------- LK Interactive Mode (Hybrid Shell & Context) -------------- |\n%b" "$LK_GREY" "$LK_RESET"
+        printf "%b | Hour Block: %b%s%b | Source: %s |\n%b\n" "$LK_GREY" "$LK_CYAN" "$CURRENT_HOUR" "$LK_GREY" "$LK_CONFIG_DIR" "$LK_RESET"
     }
 
     _lki_update_vars
@@ -77,19 +77,19 @@ lki() {
         [ "$disp_filename" != "$FILENAME" ] && disp_filename="~/$disp_filename"
 
         if [ -n "$disp_prompt" ]; then
-            printf "${LK_ORANGE}Log As %s to %s\n>> ${LK_RESET}" "$disp_prompt" "$disp_filename"
+            printf "%bLog As %s to %s\n>> %b" "$LK_ORANGE" "$disp_prompt" "$disp_filename" "$LK_RESET"
         else
-            printf "${LK_ORANGE}Log to %s\n>> ${LK_RESET}" "$disp_filename"
+            printf "%bLog to %s\n>> %b" "$LK_ORANGE" "$disp_filename" "$LK_RESET"
         fi
 
         if ! read -r line; then break; fi
+        _lki_update_vars
         curr_ts=$(date +%H:%M:%S)
         
-        # Menghapus dua baris prompt ke atas setelah user menekan enter
         printf "\033[F\033[K\033[F\033[K" 
         
         if [ -n "$line" ]; then
-            printf "${LK_MAGENTA}❯ %s${LK_RESET}\n" "$line"
+            printf "%b❯ %s%b\n" "$LK_MAGENTA" "$line" "$LK_RESET"
 
             cmd="${line%% *}"
             args="${line#* }"
@@ -142,13 +142,8 @@ lki() {
             indent="    "
 
             if [ ! -f "$FILENAME" ]; then
-                printf -- "- # [[%s]] - (Daily Summary)\n" "$TODAY" >> "$FILENAME"
+                printf -- "- # [[%s]] - (Daily Summary)\n" "$TODAY" > "$FILENAME"
                 printf "%screated: [[%s]] - %s\n" "$indent" "$TODAY" "$curr_ts" >> "$FILENAME"
-            fi
-
-            # FIX 1: Deteksi dan penulisan blok Jam Baru (Hard Fork '##')
-            if ! grep -q "^${indent}- ## ${CURRENT_HOUR} -" "$FILENAME" 2>/dev/null; then
-                printf "%s- ## %s - (Hourly Summary)\n" "$indent" "$CURRENT_HOUR" >> "$FILENAME"
             fi
 
             if [ -n "$ACTIVE_TAG" ]; then
@@ -157,18 +152,103 @@ lki() {
                 log_entry="${indent}${indent}- ${curr_ts} - ${LOG_TEXT}"
             fi
 
-            printf "%s\n" "$log_entry" >> "$FILENAME"
+            lk_tmp="${FILENAME}.tmp"
+            new_hdr="${indent}- ## $CURRENT_HOUR - (Hourly Summary)"
+
+            LC_ALL=C awk -v t_hr="$CURRENT_HOUR" -v n_hdr="$new_hdr" -v n_log="$log_entry" '
+            BEGIN {
+                inserted = 0
+                in_target = 0
+                t_hr_val = substr(t_hr, 1, 2) + 0
+            }
+            {
+                if ($0 ~ /^ {4}- (## )?[0-2][0-9]:00 /) {
+                    match($0, /[0-2][0-9]:00/)
+                    curr_hr_val = substr($0, RSTART, 2) + 0
+                    
+                    if (curr_hr_val == t_hr_val) {
+                        in_target = 1
+                        print $0
+                        next
+                    } else if (curr_hr_val > t_hr_val && inserted == 0) {
+                        if (in_target == 1) {
+                            print n_log
+                        } else {
+                            print n_hdr
+                            print n_log
+                        }
+                        inserted = 1
+                        in_target = 0
+                        print $0
+                        next
+                    } else {
+                        in_target = 0
+                        print $0
+                        next
+                    }
+                }
+                print $0
+            }
+            END {
+                if (inserted == 0) {
+                    if (in_target == 1) {
+                        print n_log
+                    } else {
+                        print n_hdr
+                        print n_log
+                    }
+                }
+            }' "$FILENAME" > "$lk_tmp" && mv "$lk_tmp" "$FILENAME"
+
+            printf "%b--- Last %s Lines ---%b\n" "$LK_DIM" "$current_tail_lines" "$LK_RESET"
             
-            printf "${LK_DIM}--- Last %s Lines ---${LK_RESET}\n" "$current_tail_lines"
+            # --- PEMBARUAN V0.0.5: Injeksi Pewarnaan Dinamis AWK Native ---
+            tail -n "$current_tail_lines" "$FILENAME" | tr -d '\033\015\010\007' | LC_ALL=C awk '
+            BEGIN {
+                RESET   = "\033[0m"
+                AMBER   = "\033[38;2;255;204;0m"
+                LIME    = "\033[38;2;100;255;0m"
+                GREY    = "\033[38;2;150;150;150m"
+                CYAN    = "\033[38;2;0;255;255m"
+                ORANGE  = "\033[38;2;225;102;0m"
+                MAGENTA = "\033[38;2;255;100;255m"
+            }
             
-            # FIX 2: Pembaruan regex AWK untuk mewarnai '## HH:00' dengan benar
-            tail -n "$current_tail_lines" "$FILENAME" | awk -v reset="$LK_RESET" -v amber="$LK_AMBER" -v cyan="$LK_CYAN" -v grey="$LK_GREY" -v lime="$LK_LIME" -v orange="$LK_ORANGE" '
+            # Catch Daily Summary
             $0 ~ /^-[[:space:]]*(#)?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\]/ {
-                print amber $0 reset; next
+                match($0, /^-[[:space:]]*(#)?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\][[:space:]]*-?[[:space:]]*/)
+                prefix = substr($0, 1, RLENGTH)
+                rest = substr($0, RLENGTH + 1)
+                
+                if (match(rest, /^!\[[^\]]+\]!/)) {
+                    tag = substr(rest, RSTART, RLENGTH)
+                    msg = substr(rest, RLENGTH + 1)
+                    t_col = (tag == "![PLAN]!") ? MAGENTA : ORANGE
+                    print AMBER prefix RESET t_col tag RESET GREY msg RESET
+                } else {
+                    print AMBER prefix RESET GREY rest RESET
+                }
+                next
             }
+            
+            # Catch Hourly Summary
             $0 ~ /^[ ]{4}- (## )?[0-2][0-9]:00/ {
-                print cyan $0 reset; next
+                match($0, /^[ ]{4}- (## )?[0-2][0-9]:00[[:space:]]*-?[[:space:]]*/)
+                prefix = substr($0, 1, RLENGTH)
+                rest = substr($0, RLENGTH + 1)
+                
+                if (match(rest, /^!\[[^\]]+\]!/)) {
+                    tag = substr(rest, RSTART, RLENGTH)
+                    msg = substr(rest, RLENGTH + 1)
+                    t_col = (tag == "![PLAN]!") ? MAGENTA : ORANGE
+                    print CYAN prefix RESET t_col tag RESET GREY msg RESET
+                } else {
+                    print CYAN prefix RESET GREY rest RESET
+                }
+                next
             }
+            
+            # Catch Regular Log / Taxonomy
             $0 ~ /^[ ]{8}- [0-2][0-9]:[0-5][0-9]:[0-5][0-9] - / {
                 ts_part = substr($0, 1, 21)
                 rest_part = substr($0, 22)
@@ -176,22 +256,37 @@ lki() {
                 if (match(rest_part, /^\[\[.*\]\] >>/)) {
                     tag_part = substr(rest_part, 1, RLENGTH)
                     msg_part = substr(rest_part, RLENGTH + 1)
-                    print lime ts_part orange tag_part grey msg_part reset
+                    
+                    if (match(msg_part, /^!\[[^\]]+\]!/)) {
+                        sub_tag = substr(msg_part, RSTART, RLENGTH)
+                        sub_msg = substr(msg_part, RLENGTH + 1)
+                        sub_col = (sub_tag == "![PLAN]!") ? MAGENTA : ORANGE
+                        print LIME ts_part ORANGE tag_part RESET sub_col sub_tag RESET GREY sub_msg RESET
+                    } else {
+                        print LIME ts_part ORANGE tag_part GREY msg_part RESET
+                    }
                 } else if (match(rest_part, /^\[[a-zA-Z0-9._-]+\] >>/)) {
                     tag_part = substr(rest_part, 1, RLENGTH)
                     msg_part = substr(rest_part, RLENGTH + 1)
-                    print lime ts_part orange tag_part grey msg_part reset
+                    print LIME ts_part ORANGE tag_part GREY msg_part RESET
                 } else {
-                    print lime ts_part grey rest_part reset
+                    if (match(rest_part, /^!\[[^\]]+\]!/)) {
+                        tag = substr(rest_part, RSTART, RLENGTH)
+                        msg = substr(rest_part, RLENGTH + 1)
+                        t_col = (tag == "![PLAN]!") ? MAGENTA : ORANGE
+                        print LIME ts_part RESET t_col tag RESET GREY msg RESET
+                    } else {
+                        print LIME ts_part GREY rest_part RESET
+                    }
                 }
                 next
             }
             { 
-                print grey $0 reset 
+                print GREY $0 RESET 
             }
             '
             
-            printf "${LK_DIM}------------------------------------------------------------${LK_RESET}\n"
+            printf "%b------------------------------------------------------------%b\n" "$LK_DIM" "$LK_RESET"
         fi
     done
 }

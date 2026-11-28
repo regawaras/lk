@@ -4,12 +4,17 @@
 lkset() {
     # --- 1. Environment & Configuration Resolution ---
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.3}"
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     
-    LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
+    # [FIXED]: Menghargai LK_CONFIG_DIR dari environment (seperti /opt/lk/...) jika ada,
+    # jika kosong, baru fallback ke struktur default di .config
+    LK_CONFIG_DIR="${LK_CONFIG_DIR:-${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
+    LK_MODULES_DIR="${LK_CONFIG_DIR}/modules"
     LK_TAXONOMY_FILE="${LK_CONFIG_DIR}/modules/context.sh"
 
+    # Load Config to get LK_DIR and LK_DEFAULT_FORMAT
+    LK_DIR="${LK_DIR:-${HOME}/.local/share/logklerk}"
     [ -f "$LK_CONFIG_FILE" ] && . "$LK_CONFIG_FILE"
     
     # User-defined tail lines, defaulting to 5
@@ -94,6 +99,7 @@ lkset() {
         printf "\033[33m[Warning]\033[0m %sAlias '%s' is already registered in context.sh. Aborting.%s\n" "$LK_RED" "$lks_alias" "$LK_RESET"
         return 0
     fi
+    
     # --- 5. Atomic Write to context.sh ---
     lks_new_func="${lks_alias}() { lk_context \"${lks_tag} >>\" \"\$@\"; }"
     

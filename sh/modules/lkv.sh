@@ -1,115 +1,101 @@
 #!/bin/sh
 # Module: Visual Editor (lkv) - Standalone & Smart Module Router
+# Version: v0.0.5 (Dynamic Module Routing Edition)
 
 lkv() { 
-    # --- 1. Standalone Environment Resolution ---
+    # --- 1. Environment Resolution ---
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.3}"
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
     LK_MODULES_DIR="${LK_CONFIG_DIR}/modules"
+    
+    # Load Config to get LK_DIR and LK_DEFAULT_FORMAT
     LK_DIR="${HOME}/.local/share/logklerk"
     LK_DEFAULT_FORMAT=".md"
-
     [ -f "$LK_CONFIG_FILE" ] && . "$LK_CONFIG_FILE"
+
+    # Define Colors
+    LKV_CYAN='\033[38;2;0;255;255m'
+    LKV_PURPLE='\033[38;2;170;100;255m'
+    LKV_AMBER='\033[38;2;255;204;0m'
+    LKV_ORANGE='\033[38;2;255;102;0m'
+    LKV_LIME='\033[38;2;100;255;0m'
+    LKV_GREY='\033[90m'
+    LKV_RED='\033[31m'
+    LKV_RESET='\033[0m'
 
     case "${1:-}" in
         # --- 2. Help Menu ---
-       	-h|-help|--help|help)
-            # Deteksi modul secara dinamis dari folder
+        -h|-help|--help|help)
             lkv_available_mods=""
             if [ -d "$LK_MODULES_DIR" ]; then
                 for f in "$LK_MODULES_DIR"/*.sh; do
                     [ -e "$f" ] || continue
-                    # Hapus path folder dan ekstensi .sh
-                    mod_name="${f##*/}"
-                    mod_name="${mod_name%.sh}"
-                    lkv_available_mods="${lkv_available_mods}${mod_name}, "
+                    m_name="${f##*/}"
+                    lkv_available_mods="${lkv_available_mods}${m_name%.sh}, "
                 done
-                # Hapus koma dan spasi ekstra di bagian paling akhir
                 lkv_available_mods="${lkv_available_mods%, }"
             fi
-            [ -z "$lkv_available_mods" ] && lkv_available_mods="none"
 
-            printf "\n\033[38;2;255;204;0m| LK (LogKlerk) --- Visual Editor (lkv) Help ---\033[0m\n"
-            printf "  \033[38;2;170;100;255mlkv\033[0m                      \033[90mOpen today's log\033[0m\n"
-            printf "  \033[38;2;170;100;255mlkv\033[0m \033[38;2;0;255;255mYYYYMMDD\033[0m             \033[90mOpen specific date's log (e.g., 20260424)\033[0m\n"
-            printf "  \033[38;2;170;100;255mlkv\033[0m \033[38;2;255;102;0m<module>\033[0m             \033[90mEdit module (e.g., %s)\033[0m\n" "$lkv_available_mods"
-            printf "  \033[38;2;170;100;255mlkv\033[0m \033[38;2;100;255;0mlk\033[0m                   \033[90mEdit main lk.sh router\033[0m\n"
-            printf "  \033[38;2;170;100;255mlkv\033[0m \033[38;2;100;255;0mconf\033[0m                 \033[90mEdit configuration (lk.conf)\033[0m\n"
-            printf "  \033[38;2;170;100;255mlkv\033[0m \033[38;2;100;255;0mbanner\033[0m               \033[90mEdit LKI ASCII banner\033[0m\n"
-            printf "  \033[38;2;170;100;255mlkvh\033[0m                     \033[90mShow this help menu\033[0m\n"
-            printf "\033[38;2;255;117;0m------------------------------------------------\033[0m\n"
+            printf "\n%b| LK (LogKlerk) --- Visual Editor (lkv) Help ---%b\n" "$LKV_AMBER" "$LKV_RESET"
+            printf "  %b%-15s%b %bOpen today's log%b\n" "$LKV_PURPLE" "lkv" "$LKV_RESET" "$LKV_GREY" "$LKV_RESET"
+            printf "  %b%-15s%b %bOpen specific date's log%b\n" "$LKV_PURPLE" "lkv YYYYMMDD" "$LKV_RESET" "$LKV_GREY" "$LKV_RESET"
+            printf "  %b%-15s%b %bEdit module file%b\n" "$LKV_PURPLE" "lkv <mod_name>" "$LKV_RESET" "$LKV_GREY" "$LKV_RESET"
+            printf "  %b%-15s%b %bEdit core router%b\n" "$LKV_PURPLE" "lkv lk" "$LKV_RESET" "$LKV_GREY" "$LKV_RESET"
+            printf "  %b%-15s%b %bEdit lk.conf%b\n" "$LKV_PURPLE" "lkv conf" "$LKV_RESET" "$LKV_GREY" "$LKV_RESET"
+            printf "  %bAvailable:%b %b%s%b\n" "$LKV_ORANGE" "$LKV_RESET" "$LKV_CYAN" "$lkv_available_mods" "$LKV_RESET"
+            printf "%b------------------------------------------------%b\n" "$LKV_ORANGE" "$LKV_RESET"
             return 0 
             ;;
 
-        # --- 3. System & Config Editor Flags ---
-        -config|-dir|config|conf|-conf)
+        # --- 3. Core System Editor ---
+        conf|config|-conf|-config)
             ${EDITOR:-vi} "$LK_CONFIG_FILE"
             return 0 ;;
-        -lk|lk)
+        lk|-lk)
             ${EDITOR:-vi} "$LK_CONFIG_DIR/lk.sh"
             return 0 ;;
-        -banner|banner)
+        banner|-banner)
             ${EDITOR:-vi} "$LK_CONFIG_DIR/assets/banner.txt"
             return 0 ;;
-        
-        # --- 4. Smart Module Router ---
-        # Catch all existing module names (with or without '-' prefix)
-        -context|context|-lkc|lkc|-lkconf|lkconf|-lkfiles|lkfiles|-lkh|lkh|-lki|lki|-lkset|lkset|-lksort|lksort|-lks|lks|-lksum|lksum|-lkv|lkv)
-            target="${1#-}" # Remove '-' prefix if user typed -module
-            ${EDITOR:-vi} "$LK_MODULES_DIR/${target}.sh"
             
-            # If editing context, source it immediately to apply changes
-            if [ "$target" = "context" ]; then
-                . "$LK_MODULES_DIR/context.sh"
-            fi
-            return 0 ;;
-            
-        # --- 5. Data Log Editor (YYYY-MM-DD or YYYYMMDD) ---
+        # --- 4. Dynamic Data Log Editor (YYYY-MM-DD or YYYYMMDD) ---
         [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
-            # Parse YYYYMMDD format into YYYY-MM-DD
             if [ "${#1}" -eq 8 ]; then
-                y="${1%????}"
-                m_d="${1#????}"
-                m="${m_d%??}"
-                d="${m_d#??}"
+                y="${1%????}"; m_d="${1#????}"; m="${m_d%??}"; d="${m_d#??}"
                 lkv_date="$y-$m-$d"
             else
                 lkv_date="$1"
             fi
-            
             lkv_year="${lkv_date%%-*}"
             lkv_month="${lkv_date%-*}"
             lkv_dir="$LK_DIR/$lkv_year/$lkv_month"
-            
             mkdir -p "$lkv_dir"
             ${EDITOR:-vi} "$lkv_dir/$lkv_date${LK_DEFAULT_FORMAT}"
-            return 0
-            ;;
-            
-        # --- 6. Default Fallback (Edit Today's Log) ---
-        "") 
-            lkv_today=$(date +%Y-%m-%d)
-            lkv_year=$(date +%Y)
-            lkv_month=$(date +%Y-%m)
+            return 0 ;;
+
+        # --- 5. Dynamic Module Router (The Upgrade) ---
+        "") # Default: Today's Log
+            lkv_today=$(date +%Y-%m-%d); lkv_year=$(date +%Y); lkv_month=$(date +%Y-%m)
             lkv_dir="$LK_DIR/$lkv_year/$lkv_month"
-            
             mkdir -p "$lkv_dir"
             ${EDITOR:-vi} "$lkv_dir/$lkv_today${LK_DEFAULT_FORMAT}"
-            return 0
-            ;;
-            
-        # --- 7. Error Handling ---
-        *)
-            printf "\033[31m[Error]\033[0m Invalid date format or module not found. Type \033[38;2;0;255;255mlkvh\033[0m for help.\n"
-            return 1
+            return 0 ;;
+
+        *) # Check if the argument is a module name
+            target="${1#-}" # Remove '-' if exists
+            if [ -f "$LK_MODULES_DIR/${target}.sh" ]; then
+                ${EDITOR:-vi} "$LK_MODULES_DIR/${target}.sh"
+                [ "$target" = "context" ] && . "$LK_MODULES_DIR/context.sh"
+                return 0
+            else
+                printf "%b[Error]%b Module or Date '%s' not found.\n" "$LKV_RED" "$LKV_RESET" "$1"
+                return 1
+            fi
             ;;
     esac
 }
 
-# Alias Wrapper for Help
-lkvh() {
-    lkv -help
-}
+lkvh() { lkv -help; }

@@ -1,9 +1,7 @@
 #!/bin/sh
 # Module: lk_context (Standalone, Custom Config Path, Tail Support, POSIX Compliant)
+# Updated for LogKlerk v0.0.5 (Chronological AWK Injector)
 
-# =========================================================================
-# Universal Colorizer Engine for Tail Feedback
-# =========================================================================
 _lctx_colorizer() {
     LK_RESET=$(printf '\033[0m')
     LK_AMBER=$(printf '\033[38;2;255;204;0m')
@@ -13,13 +11,16 @@ _lctx_colorizer() {
     LK_ORANGE=$(printf '\033[38;2;255;102;0m')
 
     awk -v reset="$LK_RESET" -v amber="$LK_AMBER" -v cyan="$LK_CYAN" -v grey="$LK_GREY" -v lime="$LK_LIME" -v orange="$LK_ORANGE" '
-    $0 ~ /^- \[\[[0-9]{4}(-[0-9]{2}){0,2}\]\]/ { print amber $0 reset; next }
-    $0 ~ /^[ ]{4}- \[\[[0-9]{4}-[0-9]{2}\]\]/ { print cyan $0 reset; next }
-    $0 ~ /^[ ]{4}- [0-2][0-9]:00/ { print cyan $0 reset; next }
+    $0 ~ /^-[[:space:]]*(#)?[[:space:]]*\[\[[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\]\]/ { print amber $0 reset; next }
+    $0 ~ /^[ ]{4}- (## )?[0-2][0-9]:00/ { print cyan $0 reset; next }
     $0 ~ /^[ ]{8}- [0-2][0-9]:[0-5][0-9]:[0-5][0-9] - / {
         ts_part = substr($0, 1, 21)
         rest_part = substr($0, 22)
         if (match(rest_part, /^\[\[.*\]\] >>/)) {
+            tag_part = substr(rest_part, 1, RLENGTH)
+            msg_part = substr(rest_part, RLENGTH + 1)
+            print lime ts_part orange tag_part grey msg_part reset
+        } else if (match(rest_part, /^\[[a-zA-Z0-9._-]+\] >>/)) {
             tag_part = substr(rest_part, 1, RLENGTH)
             msg_part = substr(rest_part, RLENGTH + 1)
             print lime ts_part orange tag_part grey msg_part reset
@@ -32,26 +33,18 @@ _lctx_colorizer() {
     '
 }
 
-# =========================================================================
-# Default Wrapper / Taxonomy Aliases
-# (Written one line per function to maintain POSIX parser stability)
-# =========================================================================
 sog()      { lk_context "[[Searching on Google]] >>" "$@"; }
 todo()     { lk_context "[[TODO]] >>" "$@"; }
 ideas()    { lk_context "[[IDEAS]] >>" "$@"; }
 problems() { lk_context "[[Problems/Troubleshooting]] >>" "$@"; }
 pentest()  { lk_context "[[Pentesting]] >>" "$@"; }
 
-# =========================================================================
-
 lk_context() {
     lctx_prefix="$1"
     shift
     lctx_message="$*"
 
-    # IF MESSAGE IS EMPTY: Call LKI (Interactive Mode) with current context
     if [ -z "$lctx_message" ]; then
-        # If lki command is available in environment, execute it. Otherwise, warn.
         if command -v lki >/dev/null 2>&1 || type lki >/dev/null 2>&1; then
             lki "$lctx_prefix"
             return $?
@@ -62,19 +55,14 @@ lk_context() {
     fi
 
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.3}"
-    
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
-    LK_TAXONOMY_FILE="${LK_CONFIG_DIR}/taxonomy.sh"
-    
     LK_DIR="${HOME}/.local/share/logklerk"
     LK_DEFAULT_FORMAT=".md"
-    LK_TAIL_LINES="${LK_TAIL_LINES:-10}" # Added fallback
+    LK_TAIL_LINES="${LK_TAIL_LINES:-10}"
 
-    if [ -f "$LK_CONFIG_FILE" ]; then
-        . "$LK_CONFIG_FILE"
-    fi
+    [ -f "$LK_CONFIG_FILE" ] && . "$LK_CONFIG_FILE"
 
     lctx_date=$(date +%Y-%m-%d)
     lctx_year=$(date +%Y)
@@ -89,12 +77,8 @@ lk_context() {
     mkdir -p "$lctx_tdir"
 
     if [ ! -f "$lctx_file" ]; then
-        printf -- "- [[%s]] - (Daily Summary)\n" "$lctx_date" >> "$lctx_file"
+        printf -- "- # [[%s]] - (Daily Summary)\n" "$lctx_date" > "$lctx_file"
         printf "%screated: [[%s]] - %s\n" "$lctx_indent" "$lctx_date" "$lctx_time" >> "$lctx_file"
-    fi
-
-    if ! grep -q "^${lctx_indent}- ${lctx_hour} -" "$lctx_file" 2>/dev/null; then
-        printf "%s- %s - (Hourly Summary)\n" "$lctx_indent" "$lctx_hour" >> "$lctx_file"
     fi
 
     if [ -n "$lctx_prefix" ]; then
@@ -103,24 +87,65 @@ lk_context() {
         lctx_log="${lctx_indent}${lctx_indent}- ${lctx_time} - ${lctx_message}"
     fi
 
-    printf "%s\n" "$lctx_log" >> "$lctx_file"
+    lctx_tmp="${lctx_file}.tmp"
+    new_hdr="    - ## $lctx_hour - (Hourly Summary)"
 
-    # Success feedback matching the universal format of lk.sh
+    awk -v t_hr="$lctx_hour" -v n_hdr="$new_hdr" -v n_log="$lctx_log" '
+    BEGIN {
+        inserted = 0
+        in_target = 0
+        t_hr_val = substr(t_hr, 1, 2) + 0
+    }
+    {
+        if ($0 ~ /^ {4}- (## )?[0-2][0-9]:00 /) {
+            match($0, /[0-2][0-9]:00/)
+            curr_hr_val = substr($0, RSTART, 2) + 0
+            
+            if (curr_hr_val == t_hr_val) {
+                in_target = 1
+                print $0
+                next
+            } else if (curr_hr_val > t_hr_val && inserted == 0) {
+                if (in_target == 1) {
+                    print n_log
+                } else {
+                    print n_hdr
+                    print n_log
+                }
+                inserted = 1
+                in_target = 0
+                print $0
+                next
+            } else {
+                in_target = 0
+                print $0
+                next
+            }
+        }
+        print $0
+    }
+    END {
+        if (inserted == 0) {
+            if (in_target == 1) {
+                print n_log
+            } else {
+                print n_hdr
+                print n_log
+            }
+        }
+    }' "$lctx_file" > "$lctx_tmp" && mv "$lctx_tmp" "$lctx_file"
+
     printf "\033[38;2;100;255;0m✔\033[0m      - %s - \033[38;2;255;102;0m%s\033[0m \033[90m%s\033[0m\n" "$lctx_time" "$lctx_prefix" "$lctx_message"
     printf "\033[38;2;255;204;0m--- Tail: Last %s lines from %s ---\033[0m\n" "$LK_TAIL_LINES" "$(basename "$lctx_file")"
     tail -n "$LK_TAIL_LINES" "$lctx_file" | _lctx_colorizer
 }
 
-# =========================================================================
-# EXCLUSIVE FILE CONTEXT ENGINE (lkfiles target)
-# =========================================================================
 lk_exclusive_context() {
     lexc_folder="$1"
     lexc_prefix="$2"
     shift 2
     lexc_message="$*"
 
-    # If message is empty, call interactive LKI (with warning if missing)
     if [ -z "$lexc_message" ]; then
         if command -v lki >/dev/null 2>&1 || type lki >/dev/null 2>&1; then
             lki "$lexc_prefix"
@@ -132,12 +157,11 @@ lk_exclusive_context() {
     fi
 
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.3}"
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
     LK_DIR="${HOME}/.local/share/logklerk"
     LK_DEFAULT_FORMAT=".md"
-
     [ -f "$LK_CONFIG_FILE" ] && . "$LK_CONFIG_FILE"
     LK_TAIL_LINES="${LK_TAIL_LINES:-10}"
 
@@ -146,26 +170,65 @@ lk_exclusive_context() {
     lexc_time=$(date +%H:%M:%S)
     lexc_indent="    "
 
-    # --- EXCLUSIVE PATH ---
-    # Instead of LK_DIR/YYYY/YYYY-MM, it goes directly to LK_DIR/Folder
     lexc_tdir="$LK_DIR/$lexc_folder"
     lexc_file="$lexc_tdir/$lexc_date${LK_DEFAULT_FORMAT}"
 
     mkdir -p "$lexc_tdir"
 
     if [ ! -f "$lexc_file" ]; then
-        printf -- "- [[%s]] - (Exclusive Log: %s)\n" "$lexc_date" "$lexc_folder" >> "$lexc_file"
+        printf -- "- # [[%s]] - (Exclusive Log: %s)\n" "$lexc_date" "$lexc_folder" > "$lexc_file"
         printf "%screated: [[%s]] - %s\n" "$lexc_indent" "$lexc_date" "$lexc_time" >> "$lexc_file"
     fi
 
-    if ! grep -q "^${lexc_indent}- ${lexc_hour} -" "$lexc_file" 2>/dev/null; then
-        printf "%s- %s - (Hourly Summary)\n" "$lexc_indent" "$lexc_hour" >> "$lexc_file"
-    fi
-
     lexc_log="${lexc_indent}${lexc_indent}- ${lexc_time} - ${lexc_prefix} ${lexc_message}"
-    printf "%s\n" "$lexc_log" >> "$lexc_file"
+    lexc_tmp="${lexc_file}.tmp"
+    new_hdr="    - ## $lexc_hour - (Hourly Summary)"
 
-    # Feedback CLI Orange (225;102;0) for Exclusive paths
+    awk -v t_hr="$lexc_hour" -v n_hdr="$new_hdr" -v n_log="$lexc_log" '
+    BEGIN {
+        inserted = 0
+        in_target = 0
+        t_hr_val = substr(t_hr, 1, 2) + 0
+    }
+    {
+        if ($0 ~ /^ {4}- (## )?[0-2][0-9]:00 /) {
+            match($0, /[0-2][0-9]:00/)
+            curr_hr_val = substr($0, RSTART, 2) + 0
+            
+            if (curr_hr_val == t_hr_val) {
+                in_target = 1
+                print $0
+                next
+            } else if (curr_hr_val > t_hr_val && inserted == 0) {
+                if (in_target == 1) {
+                    print n_log
+                } else {
+                    print n_hdr
+                    print n_log
+                }
+                inserted = 1
+                in_target = 0
+                print $0
+                next
+            } else {
+                in_target = 0
+                print $0
+                next
+            }
+        }
+        print $0
+    }
+    END {
+        if (inserted == 0) {
+            if (in_target == 1) {
+                print n_log
+            } else {
+                print n_hdr
+                print n_log
+            }
+        }
+    }' "$lexc_file" > "$lexc_tmp" && mv "$lexc_tmp" "$lexc_file"
+
     printf "\033[38;2;225;102;0m[Exclusive: /%s]\033[0m - %s - \033[38;2;255;102;0m%s\033[0m \033[90m%s\033[0m\n" "$lexc_folder" "$lexc_time" "$lexc_prefix" "$lexc_message"
     printf "\033[38;2;255;204;0m--- Tail: Last %s lines from %s ---\033[0m\n" "$LK_TAIL_LINES" "$(basename "$lexc_file")"
     tail -n "$LK_TAIL_LINES" "$lexc_file" | _lctx_colorizer
@@ -180,15 +243,15 @@ solved() { lk_context "[[Problems Solved]] >>" "$@"; }
 scrt() { lk_context "[[Scrolling on Tiktok]] >>" "$@"; }
 qfr() { lk_context "[[Question for Later]] >>" "$@"; }
 gam() { lk_context "[[Google AI Mode]] >>" "$@"; }
+gf() { lk_context "[[Gemini AI Free]] >>" "$@"; }
 lktest() { lk_context "[[Testing New LK Script]] >>" "$@"; }
-resthink() { lk_context "[[ResThink Mode]] >>" "$@"; }
+resthink() { lk_context "[[ResThink]] >>" "$@"; }
 contemplation() { lk_context "[[Contemplation]] >>" "$@"; }
 bugs() { lk_context "[[Bugs]] >>" "$@"; }
 vivo() { lk_context "[[Vivo S1 Pro]] >>" "$@"; }
 sot() { lk_context "[[Searching on Tiktok]] >>" "$@"; }
 wbl() { lk_context "[[Website Links]] >>" "$@"; }
 lkbugs() { lk_context "[[LK Bugs]] >>" "$@"; }
-dsd() { lk_exclusive_context "Dsd" "[[Dsd]] >>" "$@"; }
 commentary() { lk_context "[[Commentary]] >>" "$@"; }
 termux() { lk_context "[[Termux]] >>" "$@"; }
 ytchannel() { lk_context "[[Youtube Channel]] >>" "$@"; }
@@ -200,7 +263,7 @@ scritic() { lk_context "[[Self Critic]] >>" "$@"; }
 redmi() { lk_context "[[Redmi Pad 2 Pro]] >>" "$@"; }
 imagen() { lk_context "[[Gemini AI Image Generation]] >>" "$@"; }
 obs() { lk_context "[[obs-studio]] >>" "$@"; }
-lkkrita() { lk_context "[[Krita]] >>" "$@"; }
+lkrita() { lk_context "[[Krita]] >>" "$@"; }
 health() { lk_context "[[Health Concerns]] >>" "$@"; }
 lkchangelog() { lk_context "[[LK Changelog.md]] >>" "$@"; }
 ifr() { lk_context "[[Ideas from ResThink]] >>" "$@"; }
@@ -224,7 +287,7 @@ syt() { lk_context "[[Searching on Youtube]] >>" "$@"; }
 ryt() { lk_context "[[Researching on Youtube]] >>" "$@"; }
 soig() { lk_context "[[Scrolling on Instagram]] >>" "$@"; }
 scap() { lk_context "[[Searching on Capcut]] >>" "$@"; }
-logklerk() { lk_context "[[LK LogKlerk]] >>" "$@"; }
+logklerk() { lk_context "[[LogKlerk]] >>" "$@"; }
 bootime() { lk_context "[[Laptop BootTime Statistics]] >>" "$@"; }
 kontol() { lk_context "[[Keluh Kesah]] >>" "$@"; }
 sparlaverse() { lk_context "[[Sparlaverse]] >>" "$@"; }
@@ -246,8 +309,146 @@ recording() { lk_context "[[Recording Screen]] >>" "$@"; }
 tomorrow() { lk_context "[[Plan for Tomorrow]] >>" "$@"; }
 tolol() { lk_context "[[Tolol]] >>" "$@"; }
 posting() { lk_context "[[Posting]] >>" "$@"; }
-dsdcomfyui() { lk_exclusive_context "Dsd ComfyUI" "[[Dsd ComfyUI]] >>" "$@"; }
-watch() { lk_context "[[Watching Videos]] >>" "$@"; }
+watching() { lk_context "[[Watching Videos]] >>" "$@"; }
 fileplus() { lk_context "[[File Manager Plus]] >>" "$@"; }
 hypothesis() { lk_context "[[Hypothesis]] >>" "$@"; }
 troubleshooting() { lk_context "[[TROUBLESHOOTING]] >>" "$@"; }
+konsole() { lk_context "[[KDE Plasma Konsole]] >>" "$@"; }
+mimpi() { lk_context "[[Dreams Story History]] >>" "$@"; }
+orgfiles() { lk_context "[[Organizing Files]] >>" "$@"; }
+disnew() { lk_context "[[Discover New Things]] >>" "$@"; }
+lkkate() { lk_context "[[Writing on Kate]] >>" "$@"; }
+fgm() { lk_context "[[Firefox gemini.google.com]] >>" "$@"; }
+quotes() { lk_context "[[Quotes]] >>" "$@"; }
+lfsum() { lk_context "[[lfsum]] >>" "$@"; }
+row() { lk_context "[[Reading on Website]] >>" "$@"; }
+treview() { lk_context "[[Today Review]] >>" "$@"; }
+offscreenlaptop() { lk_context "[[Laptop Off Screen]] >>" "$@"; }
+wakeup() { lk_context "[[Wake Up]] >>" "$@"; }
+formon() { lk_context "[[Forgetful Moment]] >>" "$@"; }
+kdeplasma() { lk_context "[[KDE Plasma]] >>" "$@"; }
+failed() { lk_context "[[Failed]] >>" "$@"; }
+plan() { lk_context "![PLAN]! >>" "$@"; }
+oldsum() { lk_context "[[Adding Old Summary]] >>" "$@"; }
+reflection() { lk_context "[[Reflections]] >>" "$@"; }
+experiment() { lk_context "[[Experimenting]] >>" "$@"; }
+ggems() { lk_context "[[Gemini AI Gems]] >>" "$@"; }
+hyperofset() { lk_context "[[Hyperfocus Offset]] >>" "$@"; }
+compiling() { lk_context "[[Compiling Things]] >>" "$@"; }
+events() { lk_context "[[Events]] >>" "$@"; }
+xmr() { lk_context "[[Monero XMR]] >>" "$@"; }
+migratingdata() { lk_context "[[Migrating Data]] >>" "$@"; }
+scrf() { lk_context "[[Scrolling on Facebook]] >>" "$@"; }
+reddit() { lk_context "[[Reddit]] >>" "$@"; }
+orgroom() { lk_context "[[Organizing Room]] >>" "$@"; }
+owl() { lk_context "[[Open Website Links]] >>" "$@"; }
+pacton() { lk_context "[[Physical Action]] >>" "$@"; }
+lkdisk() { lk_context "[[Disk]] >>" "$@"; }
+soy() { lk_context "[[Searching on Youtube]] >>" "$@"; }
+wytfs() { lk_context "[[Watching on Youtube from Search]] >>" "$@"; }
+cot() { lk_context "[[Commenting on Tiktok]] >>" "$@"; }
+ifo() { lk_context "[[Ideas from Orgroom]] >>" "$@"; }
+reminder() { lk_context "[[Reminder]] >>" "$@"; }
+test3() { lk_context "test3 >>" "$@"; }
+test4() { lk_context "test 4 >>" "$@"; }
+test5() { lk_context "[[Test 5]] >>" "$@"; }
+cfr() { lk_context "[[Commentary from ResThink]] >>" "$@"; }
+mtg() { lk_context "[[Meta-Cognition]] >>" "$@"; }
+itg() { lk_context "[[Internal-Thought]] >>" "$@"; }
+saran() { lk_context "[[Saran]] >>" "$@"; }
+ifm() { lk_context "[[Ideas from Mandi]] >>" "$@"; }
+govkontol() { lk_context "[[Kritik Pemerintah]] >>" "$@"; }
+wyt() { lk_context "[[Watch Youtube]] >>" "$@"; }
+scrig() { lk_context "[[Instagram Scrolling]] >>" "$@"; }
+lkidfr() { lk_context "[[LogKlerk Ideas from ResThink]] >>" "$@"; }
+scrx() { lk_context "[[Scrolling on Twitter X]] >>" "$@"; }
+wytfh() { lk_context "[[Watching on Youtube from Homepage]] >>" "$@"; }
+adhd() { lk_context "[[ADHD]] >>" "$@"; }
+wishlist() { lk_context "[[Wishlist]] >>" "$@"; }
+sparnote() { lk_context "[[Sparlaverse Note]] >>" "$@"; }
+sparsug() { lk_context "[[Sparlaverse Suggestion]] >>" "$@"; }
+sparwork() { lk_context "[[Working on Sparlaverse]] >>" "$@"; }
+dft() { lk_context "[[Discover from Tiktok]] >>" "$@"; }
+contentideas() { lk_context "[[Content Ideas]] >>" "$@"; }
+lkfuzzel() { lk_context "[[Fuzzel]] >>" "$@"; }
+comfymistake() { lk_context "[[ComfyUI Mistake]] >>" "$@"; }
+comfygen() { lk_context "[[ComfyUI Image Generation]] >>" "$@"; }
+comfydone() { lk_context "[[ComfyUI Generation Done]] >>" "$@"; }
+discussion() { lk_context "[[Discussion]] >>" "$@"; }
+lkgemini() { lk_context "[[LogKlerk Gemini AI]] >>" "$@"; }
+orgroommax() { lk_context "[[Maximum Organizing Room]] >>" "$@"; }
+ifb() { lk_context "[[Ideas from Bathroom]] >>" "$@"; }
+orgroommin() { lk_context "[[Minimal Organizing Room]] >>" "$@"; }
+jumatan() { lk_context "[[Jumatan]] >>" "$@"; }
+sparid() { lk_context "[[Sparlaverse Ideas]] >>" "$@"; }
+spargemini() { lk_context "[[Sparlaverse Research Gemini AI]] >>" "$@"; }
+lkdolphin() { lk_context "[[Dolphin]] >>" "$@"; }
+comfytime() { lk_context "[[ComfyUI Generation Time]] >>" "$@"; }
+pinterest() { lk_context "[[Pinterest]]] >>" "$@"; }
+kritaai() { lk_context "[[Krita AI]] >>" "$@"; }
+spargen() { lk_context "[[Sparlaverse Gemini Image Generation]] >>" "$@"; }
+morningbath() { lk_context "[[MORNING-BATH]] >>" "$@"; }
+cons() { lk_context "[[Commentary from On Screen]] >>" "$@"; }
+rfr() { lk_context "[[Remember from ResThink]] >>" "$@"; }
+nyapu() { lk_context "[[NYAPU]] >>" "$@"; }
+ifnyapu() { lk_context "[[Ideas from Nyapu]] >>" "$@"; }
+veo() { lk_context "[[Gemini Veo 3]] >>" "$@"; }
+gflow() { lk_context "[[Google Flow]] >>" "$@"; }
+notebooklm() { lk_context "[[Google Notebook LM]] >>" "$@"; }
+gems() { lk_context "[[Gemini AI Gems]] >>" "$@"; }
+sparcom() { lk_context "[[Sparlaverse Commentary]] >>" "$@"; }
+flow() { lk_context "[[Google Flow]] >>" "$@"; }
+grok() { lk_context "[[Grok AI]] >>" "$@"; }
+xpost() { lk_context "[[Posting on X]] >>" "$@"; }
+note() { lk_context "[[Note]] >>" "$@"; }
+gempro() { lk_context "[[Gemini AI Pro]] >>" "$@"; }
+kernel() { lk_context "[[Kernel]] >>" "$@"; }
+mining() { lk_context "[[Mining]] >>" "$@"; }
+onion() { lk_context "[[Onion]] >>" "$@"; }
+lktty() { lk_context "[[LK TTY]] >>" "$@"; }
+bam() { lk_context "[[Brave AI Mode >>" "$@"; }
+motoran() { lk_context "[[Motoran]] >>" "$@"; }
+btc() { lk_context "[[Bitcoin]] >>" "$@"; }
+btcidr() { lk_context "[[Bitcoin/IDR]] >>" "$@"; }
+mexc() { lk_context "[[MEXC]] >>" "$@"; }
+xtm() { lk_context "[[XTM MinoTari L1]] >>" "$@"; }
+gg() { lk_context "[[Googling]] >>" "$@"; }
+bal() { lk_context "[[balance]] >>" "$@"; }
+github() { lk_context "[[GitHub]] >>" "$@"; }
+qos() { lk_context "[[Question Off Screen]] >>" "$@"; }
+lkcom() { lk_context "[[LK Commentary]] >>" "$@"; }
+gn() { lk_context "[[Google News]] >>" "$@"; }
+uninstall() { lk_context "[[Uninstall]] >>" "$@"; }
+info() { lk_context "[[Information]] >>" "$@"; }
+ncnn() { lk_context "[[QwenImage NCNN Vulkan]] >>" "$@"; }
+cf() { lk_context "[[ComfyUI Prompts]] >>" "$@"; }
+venice() { lk_context "[[Venice AI]] >>" "$@"; }
+twitter() { lk_context "[[X Twitter]] >>" "$@"; }
+civitai() { lk_context "[[CivitAI]] >>" "$@"; }
+sox() { lk_context "[[Searching on X Twitter]] >>" "$@"; }
+dolaai() { lk_context "[[Dola AI]] >>" "$@"; }
+act() { lk_context "[[Activity]] >>" "$@"; }
+kompos() { lk_context "[[Komposting]] >>" "$@"; }
+lesson() { lk_context "[[Lesson]] >>" "$@"; }
+tiktok() { lk_context "[[Tiktok]] >>" "$@"; }
+llm() { lk_context "[[llama.cpp]] >>" "$@"; }
+prompts() { lk_context "[[Prompts]] >>" "$@"; }
+claude() { lk_context "[[Claude AI]] >>" "$@"; }
+activity() { lk_context "[[activity]] >>" "$@"; }
+shopee() { lk_context "[[Shopee]] >>" "$@"; }
+kgdd() { lk_context "[[Kenapa_Gak_Dari_Dulu]] >>" "$@"; }
+testing() { lk_context "[[Testing]] >>" "$@"; }
+
+# Dsd Context
+dsd() { lk_exclusive_context "Dsd" "[[Dsd]] >>" "$@"; }
+dsdcomfyui() { lk_exclusive_context "Dsd ComfyUI" "[[Dsd ComfyUI]] >>" "$@"; }
+
+
+lkpassage() { local tgt="/srv/als/lk/note/lkpassage.md"; mkdir -p "${tgt%/*}" 2>/dev/null; [ ! -f "$tgt" ] && touch "$tgt"; if [ $# -eq 0 ]; then ${EDITOR:-vi} "$tgt"; elif [ "$1" = "-v" ] || [ "$1" = "view" ]; then cat "$tgt"; else printf -- "- %s\\n" "$*" >> "$tgt"; printf "\\033[38;2;100;255;0m✔\\033[0m Note appended to \\033[38;2;0;255;255mlkpassage.md\\033[0m\\n"; fi; }
+ref() { lk_context "[[Reference]] >>" "$@"; }
+mati() { lk_context "[[Laptop Mati]] >>" "$@"; }
+groom() { lk_context "[[GREAT_ORGANIZING_ROOM]! >>" "$@"; }
+lora() { lk_context "[[CivitAI Lora Training]] >>" "$@"; }
+restart() { lk_context "[[Restarting]] >>" "$@"; }
+com() { lk_context "[[Commentary]] >>" "$@"; }
+drawing() { lk_context "[[Drawing]] >>" "$@"; }

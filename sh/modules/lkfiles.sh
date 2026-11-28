@@ -1,10 +1,11 @@
 #!/bin/sh
 # Module: lkfiles (LogKlerk Exclusive File Generator - Standalone & Safe I/O)
+# Updated to v0.0.5: Aligned Colorizer UX and Extensibility 
 
 lkfiles() {
     # --- 1. Environment & Configuration Resolution ---
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.3}"
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
     LK_TAXONOMY_FILE="${LK_CONFIG_DIR}/modules/context.sh"
@@ -30,7 +31,8 @@ lkfiles() {
 
     # --- Tail Syntax Highlighter Engine ---
     _lkfiles_tail_colorizer() {
-        awk -v reset="$LK_RESET" -v purp="$LK_PURPLE" -v org="$LK_ORANGE" -v grey="$LK_GREY" -v cyan="$LK_CYAN" '
+        # PEMBARUAN v0.0.5: Injeksi LC_ALL=C agar kebal data korup saat parsing shell file
+        LC_ALL=C awk -v reset="$LK_RESET" -v purp="$LK_PURPLE" -v org="$LK_ORANGE" -v grey="$LK_GREY" -v cyan="$LK_CYAN" '
         {
             # Pattern matcher untuk format fungsi Shell: alias_name() { ... }
             if (match($0, /^[a-zA-Z0-9_]+/)) {
@@ -50,7 +52,7 @@ lkfiles() {
             }
             # Fallback jika ada baris kode yang tidak sesuai pola
             print "    " cyan $0 reset
-        }'
+        }' 2>/dev/null
     }
 
     # --- 2. Strict Input Validation ---

@@ -1,8 +1,8 @@
 #!/bin/sh
-# LogKlerk (LK) v0.0.3 Experimental - 100% POSIX-Compliant Core
-# Minimalist, zero-dependency, atomic-locking daily logger.
+# LogKlerk (LK) v0.0.5 Experimental - 100% POSIX-Compliant Core
+# Feature: Chronological AWK Injector, Native ![TAGS]! Highlighting & %b Formatter
 
-LK_STATUS="experimental"; LK_VERSION="v0.0.3"
+LK_STATUS="experimental"; LK_VERSION="v0.0.5"
 
 # 1. POSIX Absolute Path Resolution
 LK_INSTALL_DIR=$(cd "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
@@ -11,7 +11,7 @@ LK_MODULES_DIR="${LK_CONFIG_DIR}/modules"
 # 2. User Configuration Directory
 LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
 LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
-LK_TAXONOMY_FILE="$LK_CONFIG_DIR/modules/context.sh" # Updated path to match previous modularity
+LK_TAXONOMY_FILE="$LK_CONFIG_DIR/modules/context.sh"
 
 # Auto-Bootstrapping
 if [ ! -d "$LK_CONFIG_DIR" ]; then
@@ -28,16 +28,17 @@ LK_BANNER="${LK_CONFIG_DIR}/assets/banner.txt"
 [ -f "$LK_CONFIG_FILE" ] && . "$LK_CONFIG_FILE"
 
 # =========================================================================
-# COLOR PALETTE CONFIGURATION (Universal Core)
+# COLOR PALETTE CONFIGURATION (ZERO-SUBSHELL OVERHEAD)
 # =========================================================================
-LK_RESET=$(printf '\033[0m')
-LK_AMBER=$(printf '\033[38;2;255;255;0m')       # Daily Summary Date
-LK_LIME=$(printf '\033[38;2;100;255;0m')        # Timestamps
-LK_GREY=$(printf '\033[38;2;150;150;150m')      # True Color Bright Grey (Fixed for Wayland)
-LK_CYAN=$(printf '\033[38;2;0;255;255m')        # Hourly Summary Time
-LK_ORANGE=$(printf '\033[38;2;225;102;0m')      # Custom Orange (Taxonomy & Banner)
-LK_DIM=$(printf '\033[2m')                      # Dim/Faded (Tails Line)
-LK_GREEN=$(printf '\033[32m')                   # Success Checkmarks
+LK_RESET='\033[0m'
+LK_AMBER='\033[38;2;255;255;0m'
+LK_LIME='\033[38;2;100;255;0m'
+LK_GREY='\033[38;2;150;150;150m'
+LK_CYAN='\033[38;2;0;255;255m'
+LK_ORANGE='\033[38;2;225;102;0m'
+LK_DIM='\033[2m'
+LK_GREEN='\033[32m'
+LK_MAGENTA='\033[38;2;255;100;255m'
 # =========================================================================
 
 # Load all available modules
@@ -53,7 +54,6 @@ fi
 
 lk() {
     case "${1:-}" in
-        # --- Default Behavior: Launch LKI or Show Fallback Banner ---
         "")
             if type lki >/dev/null 2>&1; then
                 lki ""
@@ -61,13 +61,13 @@ lk() {
             else
                 curr_hr=$(date +%H:00)
                 if [ -f "$LK_BANNER" ]; then
-                    printf "%s" "$LK_ORANGE"
+                    printf "%b" "$LK_ORANGE"
                     cat "$LK_BANNER"
                 fi
-                printf "%s | LK LogKlerk %s %s | Github: https://github.com/regawaras/lk/ |\n" "$LK_ORANGE" "$LK_STATUS" "$LK_VERSION"
+                printf "%b | LK LogKlerk %s %s | Github: https://github.com/regawaras/lk/ |\n" "$LK_ORANGE" "$LK_STATUS" "$LK_VERSION"
                 printf " | ''Just Open Terminal, Type, Enter, Forget Brutal'' -LK LogKlerking Creator |\n"
-                printf "${LK_GREY} | -------------- LK Interactive Mode (Hybrid Shell & Context) -------------- |\n"
-                printf " | Hour Block: ${LK_CYAN}%s${LK_GREY} | Source: %s |\n${LK_RESET}" "$curr_hr" "$LK_CONFIG_DIR"
+                printf "%b | -------------- LK Interactive Mode (Hybrid Shell & Context) -------------- |\n" "$LK_GREY"
+                printf " | Hour Block: %b%s%b | Source: %s |\n%b" "$LK_CYAN" "$curr_hr" "$LK_GREY" "$LK_CONFIG_DIR" "$LK_RESET"
                 return 0
             fi
             ;;
@@ -118,7 +118,7 @@ lk() {
 _lk_write() {
     ( 
         lk_cat="$1"; shift; lk_text="$*"
-        [ -z "$lk_text" ] && { printf "\033[31m[Error]\033[0m No Input.\n" >&2; exit 1; }
+        [ -z "$lk_text" ] && { printf "%b[Error]%b No Input.\n" "$LK_RED" "$LK_RESET" >&2; exit 1; }
 
         set -- $(date '+%Y %m %d %H:00 %H:%M:%S')
         lk_tdir="${LK_DIR}/$1/$1-$2"
@@ -127,35 +127,138 @@ _lk_write() {
 
         [ -d "$lk_tdir" ] || mkdir -p "$lk_tdir"
 
-        # Atomic Locking Mechanism
         while ! mkdir "$lk_lock" 2>/dev/null; do sleep 1; done
         trap 'rmdir "$lk_lock" 2>/dev/null; exit 1' HUP INT QUIT TERM ABRT
 
+        if [ ! -f "$lk_file" ]; then
+            printf -- "- # [[%s-%s-%s]] - (Daily Summary)\n    created: [[%s-%s-%s]] - %s\n" "$1" "$2" "$3" "$1" "$2" "$3" "$5" > "$lk_file"
+        fi
+
+        lk_tmp="${lk_file}.tmp"
+        new_hdr="    - ## $4 - (Hourly Summary)"
+        new_log="        - $5 - ${lk_cat:+$lk_cat }$lk_text"
+
+        LC_ALL=C awk -v t_hr="$4" -v n_hdr="$new_hdr" -v n_log="$new_log" '
+        BEGIN {
+            inserted = 0
+            in_target = 0
+            t_hr_val = substr(t_hr, 1, 2) + 0
+        }
         {
-            [ -f "$lk_file" ] || printf -- "- [[%s-%s-%s]] - (Daily Summary)\n    created: [[%s-%s-%s]] - %s\n" "$1" "$2" "$3" "$1" "$2" "$3" "$5"
-            grep -q "^    - $4" "$lk_file" 2>/dev/null || printf "    - %s - (Hourly Summary)\n" "$4"
-            printf "        - %s - %s%s\n" "$5" "${lk_cat:+$lk_cat }" "$lk_text"
-        } >> "$lk_file"
+            if ($0 ~ /^ {4}- (## )?[0-2][0-9]:00 /) {
+                match($0, /[0-2][0-9]:00/)
+                curr_hr_val = substr($0, RSTART, 2) + 0
+                
+                if (curr_hr_val == t_hr_val) {
+                    in_target = 1
+                    print $0
+                    next
+                } else if (curr_hr_val > t_hr_val && inserted == 0) {
+                    if (in_target == 1) {
+                        print n_log
+                    } else {
+                        print n_hdr
+                        print n_log
+                    }
+                    inserted = 1
+                    in_target = 0
+                    print $0
+                    next
+                } else {
+                    in_target = 0
+                    print $0
+                    next
+                }
+            }
+            print $0
+        }
+        END {
+            if (inserted == 0) {
+                if (in_target == 1) {
+                    print n_log
+                } else {
+                    print n_hdr
+                    print n_log
+                }
+            }
+        }' "$lk_file" > "$lk_tmp" && mv "$lk_tmp" "$lk_file"
 
         rmdir "$lk_lock" 2>/dev/null
         
-        # CLI Feedback
-        printf "${LK_GREEN}✔${LK_RESET}         - ${LK_LIME}%s${LK_RESET} - ${LK_ORANGE}%s${LK_GREY}%s${LK_RESET}\n" "$5" "${lk_cat:+$lk_cat }" "$lk_text"
+        # Output CLI Feedback dengan Highlighter Native
+        printf "%s\n" "$lk_text" | LC_ALL=C awk -v cat_str="$lk_cat" -v ts="$5" '
+        BEGIN {
+            RESET   = "\033[0m"
+            GREEN   = "\033[32m"
+            LIME    = "\033[38;2;100;255;0m"
+            ORANGE  = "\033[38;2;225;102;0m"
+            MAGENTA = "\033[38;2;255;100;255m"
+            GREY    = "\033[38;2;150;150;150m"
+        }
+        {
+            cat_display = (cat_str != "") ? ORANGE cat_str " " RESET : ""
+            
+            if (match($0, /^!\[[^\]]+\]!/)) {
+                tag = substr($0, RSTART, RLENGTH)
+                msg = substr($0, RLENGTH + 1)
+                sub(/^[[:space:]]+/, "", msg)
+                
+                t_col = (tag == "![PLAN]!") ? MAGENTA : ORANGE
+                printf "%s✔%s        - %s%s%s - %s%s%s%s %s%s%s\n", GREEN, RESET, LIME, ts, RESET, cat_display, t_col, tag, RESET, GREY, msg, RESET
+            } else {
+                printf "%s✔%s        - %s%s%s - %s%s%s%s\n", GREEN, RESET, LIME, ts, RESET, cat_display, GREY, $0, RESET
+            }
+        }'
 
         case "${LK_TAIL_LINES:-0}" in
             *[!0-9]*|"") ;; 
             0) ;;           
             *) 
-                # Colorized Tail Output
-                printf "${LK_DIM}--- Tail: Last %s lines from %s ---${LK_RESET}\n" "$LK_TAIL_LINES" "$1-$2-$3${LK_DEFAULT_FORMAT:-.md}"
+                printf "%b--- Tail: Last %s lines from %s ---%b\n" "$LK_DIM" "$LK_TAIL_LINES" "$1-$2-$3${LK_DEFAULT_FORMAT:-.md}" "$LK_RESET"
                 
-                tail -n "$LK_TAIL_LINES" "$lk_file" | awk -v reset="$LK_RESET" -v amber="$LK_AMBER" -v cyan="$LK_CYAN" -v grey="$LK_GREY" -v lime="$LK_LIME" -v orange="$LK_ORANGE" '
-                $0 ~ /^- \[\[[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\]\]/ {
-                    print amber $0 reset; next
+                tail -n "$LK_TAIL_LINES" "$lk_file" | tr -d '\033\015\010\007' | LC_ALL=C awk '
+                BEGIN {
+                    RESET   = "\033[0m"
+                    AMBER   = "\033[38;2;255;255;0m"
+                    LIME    = "\033[38;2;100;255;0m"
+                    GREY    = "\033[38;2;150;150;150m"
+                    CYAN    = "\033[38;2;0;255;255m"
+                    ORANGE  = "\033[38;2;225;102;0m"
+                    MAGENTA = "\033[38;2;255;100;255m"
                 }
-                $0 ~ /^[ ]{4}- [0-2][0-9]:00/ {
-                    print cyan $0 reset; next
+                
+                $0 ~ /^-[[:space:]]*#?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\]/ {
+                    match($0, /^-[[:space:]]*#?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\][[:space:]]*-?[[:space:]]*/)
+                    prefix = substr($0, 1, RLENGTH)
+                    rest = substr($0, RLENGTH + 1)
+                    
+                    if (match(rest, /^!\[[^\]]+\]!/)) {
+                        tag = substr(rest, RSTART, RLENGTH)
+                        msg = substr(rest, RLENGTH + 1)
+                        t_col = (tag == "![PLAN]!") ? MAGENTA : ORANGE
+                        print AMBER prefix RESET t_col tag RESET GREY msg RESET
+                    } else {
+                        print AMBER prefix RESET GREY rest RESET
+                    }
+                    next
                 }
+                
+                $0 ~ /^[ ]{4}- (## )?[0-2][0-9]:00/ {
+                    match($0, /^[ ]{4}- (## )?[0-2][0-9]:00[[:space:]]*-?[[:space:]]*/)
+                    prefix = substr($0, 1, RLENGTH)
+                    rest = substr($0, RLENGTH + 1)
+                    
+                    if (match(rest, /^!\[[^\]]+\]!/)) {
+                        tag = substr(rest, RSTART, RLENGTH)
+                        msg = substr(rest, RLENGTH + 1)
+                        t_col = (tag == "![PLAN]!") ? MAGENTA : ORANGE
+                        print CYAN prefix RESET t_col tag RESET GREY msg RESET
+                    } else {
+                        print CYAN prefix RESET GREY rest RESET
+                    }
+                    next
+                }
+                
                 $0 ~ /^[ ]{8}- [0-2][0-9]:[0-5][0-9]:[0-5][0-9] - / {
                     ts_part = substr($0, 1, 21)
                     rest_part = substr($0, 22)
@@ -163,19 +266,37 @@ _lk_write() {
                     if (match(rest_part, /^\[\[.*\]\] >>/)) {
                         tag_part = substr(rest_part, 1, RLENGTH)
                         msg_part = substr(rest_part, RLENGTH + 1)
-                        print lime ts_part orange tag_part grey msg_part reset
+                        
+                        if (match(msg_part, /^!\[[^\]]+\]!/)) {
+                            sub_tag = substr(msg_part, RSTART, RLENGTH)
+                            sub_msg = substr(msg_part, RLENGTH + 1)
+                            sub_col = (sub_tag == "![PLAN]!") ? MAGENTA : ORANGE
+                            print LIME ts_part ORANGE tag_part RESET sub_col sub_tag RESET GREY sub_msg RESET
+                        } else {
+                            print LIME ts_part ORANGE tag_part GREY msg_part RESET
+                        }
                     } else if (match(rest_part, /^\[[a-zA-Z0-9._-]+\] >>/)) {
                         tag_part = substr(rest_part, 1, RLENGTH)
                         msg_part = substr(rest_part, RLENGTH + 1)
-                        print lime ts_part orange tag_part grey msg_part reset
+                        print LIME ts_part ORANGE tag_part GREY msg_part RESET
                     } else {
-                        print lime ts_part grey rest_part reset
+                        if (match(rest_part, /^!\[[^\]]+\]!/)) {
+                            tag = substr(rest_part, RSTART, RLENGTH)
+                            msg = substr(rest_part, RLENGTH + 1)
+                            t_col = (tag == "![PLAN]!") ? MAGENTA : ORANGE
+                            print LIME ts_part RESET t_col tag RESET GREY msg RESET
+                        } else {
+                            print LIME ts_part GREY rest_part RESET
+                        }
                     }
                     next
                 }
-                { print grey $0 reset }
+                { 
+                    print GREY $0 RESET 
+                }
                 '
-                printf "${LK_DIM}------------------------------------------------------------${LK_RESET}\n"
+                
+                printf "%b------------------------------------------------------------%b\n" "$LK_DIM" "$LK_RESET"
                 ;;
         esac
     )

@@ -1,49 +1,84 @@
 #!/bin/sh
 # Module: Chronological Reader (lkc) - Standalone & Config-Aware & Hard Fork ##
+# Updated to v0.0.5: Zero-Subshell Overhead, Pure AWK Constants & Absolute Pattern Matcher
 
 # =========================================================================
-# COLOR PALETTE CONFIGURATION (Global Variables)
+# COLOR PALETTE CONFIGURATION (ZERO-SUBSHELL OVERHEAD)
+# Dideklarasikan sebagai string literal murni
 # =========================================================================
-LK_RESET=$(printf '\033[0m')
-LK_AMBER=$(printf '\033[38;2;255;204;0m')       # Daily Summary Date
-LK_LIME=$(printf '\033[38;2;100;255;0m')        # Timestamps
-LK_GREY=$(printf '\033[90m')                    # Plain Text Log
-LK_CYAN=$(printf '\033[38;2;0;255;255m')        # Hourly Summary Time
-LK_ORANGE=$(printf '\033[38;2;255;102;0m')      # Taxonomy Tags [[...]] >>
-LK_HEADER_ORG=$(printf '\033[38;2;255;117;0m')  # Header Separator
+LK_RESET='\033[0m'
+LK_AMBER='\033[38;2;255;204;0m'       # Daily Summary Date
+LK_LIME='\033[38;2;100;255;0m'        # Timestamps
+LK_GREY='\033[38;2;150;150;150m'      # Light Grey for Summary Text
+LK_PATH_GREY='\033[38;2;85;85;85m'    # Very Dim Grey for File Paths
+LK_CYAN='\033[38;2;0;255;255m'        # Hourly Summary Time
+LK_ORANGE='\033[38;2;255;102;0m'      # Tags Taxonomy & Main ![TAGS]!
+LK_MAGENTA='\033[38;2;255;100;255m'   # Light Purple / Magenta for ![PLAN]!
+LK_HEADER_ORG='\033[38;2;255;117;0m'  # Header Separator
 # =========================================================================
 
-# Smart Summary Extractor (Ignores YAML Frontmatter & Empty Lines)
+# PEMBARUAN: Smart Summary Extractor (Absolute Pattern Matching)
+# Mengabaikan posisi baris, YAML, atau teks acak. Hanya mencari Format Summary Resmi.
 _LK_EXTRACTOR='
-FNR==1 {
-    if ($0 ~ /^---/) { yaml=1; next }
-    else { print; nextfile }
+/^[[:space:]]*-[[:space:]]*#?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\]/ {
+    print $0;
+    nextfile;
 }
-yaml && /^---/ { yaml=0; next }
-yaml { next }
-/^[[:space:]]*$/ { next }
-{ print; nextfile }
 '
 
-# Universal Colorizer Engine (Pipes Input)
+# Universal Colorizer Engine (Native AWK)
 _lkc_colorizer() {
-    # Data Sanitization: Kill Rogue Terminal Escape Codes (ESC, CR, BS, BEL)
-    tr -d '\033\015\010\007' | \
-    awk -v reset="$LK_RESET" -v amber="$LK_AMBER" -v cyan="$LK_CYAN" -v grey="$LK_GREY" -v lime="$LK_LIME" -v orange="$LK_ORANGE" '
+    tr -d '\033\015\010\007' | LC_ALL=C awk '
+    BEGIN {
+        RESET   = "\033[0m"
+        AMBER   = "\033[38;2;255;204;0m"
+        LIME    = "\033[38;2;100;255;0m"
+        GREY    = "\033[38;2;150;150;150m"
+        CYAN    = "\033[38;2;0;255;255m"
+        ORANGE  = "\033[38;2;255;102;0m"
+        MAGENTA = "\033[38;2;255;100;255m"
+    }
     
-    # Catch Date (YYYY-MM-DD), Month (YYYY-MM), and Year (YYYY) -> AMBER
-    $0 ~ /^-[[:space:]]*(#)?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\]/ {
-        print amber $0 reset; next
+    # Catch Date (YYYY-MM-DD) Daily Summary (Safe Regex #?)
+    $0 ~ /^-[[:space:]]*#?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\]/ {
+        match($0, /^-[[:space:]]*#?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\][[:space:]]*-?[[:space:]]*/)
+        prefix = substr($0, 1, RLENGTH)
+        rest = substr($0, RLENGTH + 1)
+        
+        if (match(rest, /^!\[[^\]]+\]!/)) {
+            tag = substr(rest, RSTART, RLENGTH)
+            msg = substr(rest, RLENGTH + 1)
+            t_col = (tag == "![PLAN]!") ? MAGENTA : ORANGE
+            print AMBER prefix RESET t_col tag RESET GREY msg RESET
+        } else {
+            print AMBER prefix RESET GREY rest RESET
+        }
+        next
     }
-    # Catch Monthly Summary Item in yearly file (Indent 4 spaces + [[YYYY-MM]]) -> CYAN
+    
+    # Catch Monthly Summary Item in yearly file
     $0 ~ /^[ ]{4}- \[\[[0-9]{4}-[0-9]{2}\]\]/ {
-        print cyan $0 reset; next
+        print CYAN $0 RESET; next
     }
-    # Catch Hourly Summary Item (Supports new "## HH:00" and legacy "HH:00") -> CYAN
+    
+    # Catch Hourly Summary Item (Safe Regex ##?)
     $0 ~ /^[ ]{4}- (## )?[0-2][0-9]:00/ {
-        print cyan $0 reset; next
+        match($0, /^[ ]{4}- (## )?[0-2][0-9]:00[[:space:]]*-?[[:space:]]*/)
+        prefix = substr($0, 1, RLENGTH)
+        rest = substr($0, RLENGTH + 1)
+        
+        if (match(rest, /^!\[[^\]]+\]!/)) {
+            tag = substr(rest, RSTART, RLENGTH)
+            msg = substr(rest, RLENGTH + 1)
+            t_col = (tag == "![PLAN]!") ? MAGENTA : ORANGE
+            print CYAN prefix RESET t_col tag RESET GREY msg RESET
+        } else {
+            print CYAN prefix RESET GREY rest RESET
+        }
+        next
     }
-    # Catch Regular Log / Taxonomy (Green Timestamp, Orange Tag, Grey Log)
+    
+    # Catch Regular Log / Taxonomy
     $0 ~ /^[ ]{8}- [0-2][0-9]:[0-5][0-9]:[0-5][0-9] - / {
         ts_part = substr($0, 1, 21)
         rest_part = substr($0, 22)
@@ -51,20 +86,19 @@ _lkc_colorizer() {
         if (match(rest_part, /^\[\[.*\]\] >>/)) {
             tag_part = substr(rest_part, 1, RLENGTH)
             msg_part = substr(rest_part, RLENGTH + 1)
-            print lime ts_part orange tag_part grey msg_part reset
+            print LIME ts_part ORANGE tag_part GREY msg_part RESET
         } else {
-            print lime ts_part grey rest_part reset
+            print LIME ts_part GREY rest_part RESET
         }
         next
     }
-    { print grey $0 reset }
+    { print GREY $0 RESET }
     '
 }
 
 lkc() {
-    # --- 1. Environment & Configuration Resolution ---
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.4}"
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
     LK_DIR="${HOME}/.local/share/logklerk"
@@ -78,24 +112,22 @@ lkc() {
     lkc_filename="$LK_DIR/$YEAR/$MONTH/$TODAY.md"
     lkc_indent="    "
 
-    # --- 2. Execution Mode Without Arguments (Today) ---
     if [ -z "$1" ]; then
         if [ -f "$lkc_filename" ]; then
-            printf "%s| LK (LogKlerk) --- All Activities of the Day (%s) ---%s\n" "$LK_HEADER_ORG" "$TODAY" "$LK_RESET"
+            printf "%b| LK (LogKlerk) --- All Activities of the Day (%s) ---%b\n" "$LK_HEADER_ORG" "$TODAY" "$LK_RESET"
             _lkc_colorizer < "$lkc_filename"
-            printf "%s----------------------------------------%s\n" "$LK_HEADER_ORG" "$LK_RESET"
+            printf "%b----------------------------------------%b\n" "$LK_HEADER_ORG" "$LK_RESET"
         else
             printf "\033[31m[Warning]\033[0m File does not exist yet.\n"
         fi
         return 0
     fi
 
-    # --- 3. Dynamic Filter Mode ---
     case "$1" in
         -a|-all|--all)
-            printf "%s--- All Daily Summaries ---%s\n" "$LK_HEADER_ORG" "$LK_RESET"
+            printf "%b--- All Daily Summaries ---%b\n" "$LK_HEADER_ORG" "$LK_RESET"
             find "$LK_DIR" -type f -name "*.md" -exec awk "$_LK_EXTRACTOR" {} + | sort | _lkc_colorizer
-            printf "%s----------------------------------------%s\n" "$LK_HEADER_ORG" "$LK_RESET"
+            printf "%b----------------------------------------%b\n" "$LK_HEADER_ORG" "$LK_RESET"
             return 0 ;;
         -y|-year|--year)
             lkc_tdir="$LK_DIR/$YEAR"
@@ -106,13 +138,9 @@ lkc() {
             [ -d "$lkc_tdir" ] && find "$lkc_tdir" -type f -name "*.md" -exec awk "$_LK_EXTRACTOR" {} + | sort | _lkc_colorizer
             return 0 ;;
         
-        # --- Specific Date Extraction ---
         [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
             if [ "${#1}" -eq 8 ]; then
-                y="${1%????}"
-                m_d="${1#????}"
-                m="${m_d%??}"
-                d="${m_d#??}"
+                y="${1%????}"; m_d="${1#????}"; m="${m_d%??}"; d="${m_d#??}"
                 target_date="$y-$m-$d"
             else
                 target_date="$1"
@@ -123,9 +151,9 @@ lkc() {
             lkc_tfile="$LK_DIR/$lkc_ty/$lkc_tm/$target_date.md"
             
             if [ -f "$lkc_tfile" ]; then
-                printf "%s| LK (LogKlerk) --- All Activities of the Day (%s) ---%s\n" "$LK_HEADER_ORG" "$target_date" "$LK_RESET"
+                printf "%b| LK (LogKlerk) --- All Activities of the Day (%s) ---%b\n" "$LK_HEADER_ORG" "$target_date" "$LK_RESET"
                 _lkc_colorizer < "$lkc_tfile"
-                printf "%s----------------------------------------%s\n" "$LK_HEADER_ORG" "$LK_RESET"
+                printf "%b----------------------------------------%b\n" "$LK_HEADER_ORG" "$LK_RESET"
             else
                 printf "\033[31m[Warning]\033[0m File does not exist yet: %s\n" "$lkc_tfile"
             fi
@@ -134,7 +162,6 @@ lkc() {
 
     [ ! -f "$lkc_filename" ] && return 1
 
-    # --- 4. Hour Filter Mode (UPDATED FOR '##' HARD FORK) ---
     case "$1" in
         *-*)
             lkc_sh=$(echo "$1" | cut -d'-' -f1 | tr -cd '0-9' | sed 's/^0*//'); [ -z "$lkc_sh" ] && lkc_sh=0
@@ -144,7 +171,6 @@ lkc() {
             awk -v start="${lkc_indent}- ## $lkc_sfmt" -v start_leg="${lkc_indent}- $lkc_sfmt" -v end_limit="${lkc_efmt}" '
                 $0 ~ start || $0 ~ start_leg {found=1}
                 found && $0 ~ /^[ ]{4}- (## )?[0-2][0-9]:00/ {
-                    # Ekstrak HH:00 untuk komparasi dengan end_limit
                     match($0, /[0-2][0-9]:00/)
                     curr_hh = substr($0, RSTART, 5)
                     if (curr_hh > end_limit) found=0
@@ -167,7 +193,7 @@ lkc() {
 
 lkcd() {
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.4}"
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
     LK_DIR="${HOME}/.local/share/logklerk"
@@ -178,10 +204,7 @@ lkcd() {
         lkcd_date=$(date +%Y-%m-%d)
     else
         if [ "${#1}" -eq 8 ]; then
-            y="${1%????}"
-            m_d="${1#????}"
-            m="${m_d%??}"
-            d="${m_d#??}"
+            y="${1%????}"; m_d="${1#????}"; m="${m_d%??}"; d="${m_d#??}"
             lkcd_date="$y-$m-$d"
         elif echo "$1" | grep -q '^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}$'; then
             lkcd_date="$1"
@@ -200,27 +223,32 @@ lkcd() {
         return 1
     fi
     
-    printf "%s| LK (LogKlerk) --- Daily Hourly Summary (%s) ---%s\n" "$LK_HEADER_ORG" "$lkcd_date" "$LK_RESET"
+    printf "%b| LK (LogKlerk) --- Daily Hourly Summary (%s) ---%b\n" "$LK_HEADER_ORG" "$lkcd_date" "$LK_RESET"
     
+    # 1. Cetak Daily Summary
     awk "$_LK_EXTRACTOR" "$lkcd_fn" | _lkc_colorizer
     
-    # FIX: Updated to detect "## HH:00"
-    grep -E "\- (## )?[0-2][0-9]:00 " "$lkcd_fn" | sed 's/^[[:space:]]*//' | awk '!seen[$0]++' | sort -k2,2 | while IFS= read -r line; do
-        printf "%s    %s%s\n" "$LK_CYAN" "$line" "$LK_RESET"
-    done
+    # 2. Cetak Hourly Summaries (Optimasi Zero-Loop: Satu Pipeline AWK)
+    awk '/^[[:space:]]*- (## )?[0-2][0-9]:00 / {
+        sub(/^[[:space:]]+/, "")
+        line = "    " $0
+        if (!seen[line]++) {
+            print line
+        }
+    }' "$lkcd_fn" | sort -k2,2 | _lkc_colorizer
     
-    printf "%s----------------------------------%s\n" "$LK_HEADER_ORG" "$LK_RESET"
+    printf "%b----------------------------------%b\n" "$LK_HEADER_ORG" "$LK_RESET"
 }
 
 lkch() {
     lkch_curr=$(date +%H)
-    printf "%s| LK (LogKlerk) --- Hourly Summary (%s:00) ---%s\n" "$LK_HEADER_ORG" "$lkch_curr" "$LK_RESET"
+    printf "%b| LK (LogKlerk) --- Hourly Summary (%s:00) ---%b\n" "$LK_HEADER_ORG" "$lkch_curr" "$LK_RESET"
     lkc "$lkch_curr"
 }
 
 lkcm() {
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.4}"
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
     LK_DIR="${HOME}/.local/share/logklerk"
@@ -232,8 +260,7 @@ lkcm() {
         lkcm_month=$(date +%Y-%m)
     else
         if [ "${#1}" -eq 6 ]; then
-            lkcm_year="${1%??}"
-            _m="${1#????}"
+            lkcm_year="${1%??}"; _m="${1#????}"
             lkcm_month="$lkcm_year-$_m"
         elif [ "${#1}" -eq 7 ] && echo "$1" | grep -q '^[0-9]\{4\}-[0-9]\{2\}$'; then
             lkcm_year="${1%-*}"
@@ -251,37 +278,158 @@ lkcm() {
         return 1
     fi
 
-    printf "%s| LK (LogKlerk) --- Monthly Daily Summary (%s) ---%s\n" "$LK_HEADER_ORG" "$lkcm_month" "$LK_RESET"
+    printf "%b| LK (LogKlerk) --- Monthly Daily Summary (%s) ---%b\n" "$LK_HEADER_ORG" "$lkcm_month" "$LK_RESET"
     find "$lkcm_tdir" -type f -name "*.md" -exec awk "$_LK_EXTRACTOR" {} + | sort | _lkc_colorizer
 }
 
 lkcy() {
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.4}"
+    LK_VERSION="${LK_VERSION:-v0.0.5}"
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
     LK_DIR="${HOME}/.local/share/logklerk"
 
     [ -f "$LK_CONFIG_FILE" ] && . "$LK_CONFIG_FILE"
+    LK_DIR="${LK_DIR%/}"
 
-    if [ -z "$1" ]; then
-        lkcy_year=$(date +%Y)
-    else
-        if [ "${#1}" -eq 4 ] && echo "$1" | grep -q '^[0-9]\{4\}$'; then
-            lkcy_year="$1"
-        else
-            printf "\033[31m[Error]\033[0m Invalid year format. Use YYYY.\n"
-            return 1
-        fi
+    lksy_target_path="$LK_DIR"
+    view_mode="default"
+    max_len=38
+    is_full_mode=0
+
+    for arg in "$@"; do
+        case "$arg" in
+            min|mini)       view_mode="mini"; max_len=25 ;;
+            mid|med|medium) view_mode="mid"; max_len=55 ;;
+            max|maximum)    view_mode="max"; max_len=80 ;;
+            fit)            view_mode="fit"; max_len=120 ;;
+            full)           view_mode="full"; max_len=9999; is_full_mode=1 ;; 
+            
+            [0-9][0-9][0-9][0-9])
+                if [ -d "$LK_DIR/$arg" ]; then
+                    lksy_target_path="$LK_DIR/$arg"
+                else
+                    printf "\033[31m[Error]\033[0m Folder tahun %s tidak ditemukan.\n" "$arg"
+                    return 1
+                fi
+                ;;
+            *)
+                printf "\033[31m[Error]\033[0m Argumen tidak dikenal: %s\n" "$arg"
+                printf "Usage: lkcy [YYYY] [min|mid|max|fit|full]\n"
+                return 1
+                ;;
+        esac
+    done
+
+    if [ "$is_full_mode" -eq 1 ]; then
+        tput rmam 2>/dev/null
+        trap 'tput smam 2>/dev/null; trap - INT' INT
     fi
 
-    lkcy_file="$LK_DIR/$lkcy_year/$lkcy_year.md"
+    printf "%b| LK (LogKlerk) --- Historical Genesis Timeline (ASC) [View: %s] ---%b\n" "$LK_HEADER_ORG" "$view_mode" "$LK_RESET"
 
-    if [ ! -f "$lkcy_file" ]; then
-        printf "\033[31m[Warning]\033[0m Yearly summary file \033[38;2;255;255;0m%s.md\033[0m not found.\n" "$lkcy_year"
-        return 1
+    # --- 3. The Genesis Engine (Direct Streamer, Native Colors) ---
+    find "$lksy_target_path" -type f -name "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9].md" | sort | \
+    LC_ALL=C awk -v max_len="$max_len" -v lkdir="$LK_DIR" '
+    BEGIN {
+        RESET     = "\033[0m"
+        AMBER     = "\033[38;2;255;204;0m"
+        ORANGE    = "\033[38;2;255;102;0m"
+        GREY      = "\033[38;2;150;150;150m"
+        PATH_GREY = "\033[38;2;85;85;85m"
+        RED       = "\033[31m"
+        MAGENTA   = "\033[38;2;255;100;255m"
+    }
+    {
+        file = $0;
+        summary_found = 0; txt = ""; dt = "";
+        rel_path = file;
+        sub(lkdir "/", "", rel_path);
+
+        n = split(file, parts, "/");
+        basename = parts[n];
+        file_date = substr(basename, 1, 10);
+        dt = "[[" file_date "]]";
+
+        while ((getline line < file) > 0) {
+            # Safe literal regex for #? matching
+            if (line ~ /^-[[:space:]]*#?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\]/) {
+                txt = line;
+                sub(/^[[:space:]]*-[[:space:]]*#?[[:space:]]*\[\[[^\]]+\]\][[:space:]]*[-:]?[[:space:]]*/, "", txt);
+                summary_found = 1;
+                break;
+            }
+        }
+        close(file);
+
+        if (!summary_found) {
+            txt = "[Summary Not Found/Not Yet Summarized]";
+        }
+        sub(/[[:space:]]+$/, "", txt);
+
+        if (txt == "" && summary_found) {
+            txt = "(Empty Summary)";
+        } else if (txt == "") {
+             txt = "[Empty File / Anomaly]";
+        }
+
+        # --- Dynamic Padding & Tag Segmentation ---
+        txt_color = GREY;
+        tag_str = "";
+        tag_color = ORANGE;
+        rest_str = txt;
+
+        if (txt ~ /^\[Anomaly/ || txt ~ /^\[Empty/ || txt ~ /^\(Empty/ || txt ~ /^\[Summary Not Found/) {
+            txt_color = RED;
+            colored_txt = txt_color txt RESET;
+            raw_len = length(txt);
+        } else {
+            if (match(txt, /^!\[[^\]]+\]!/)) {
+                tag_str = substr(txt, RSTART, RLENGTH);
+                rest_str = substr(txt, RLENGTH + 1);
+                sub(/^[[:space:]]+/, "", rest_str);
+
+                if (tag_str == "![PLAN]!") tag_color = MAGENTA;
+            }
+
+            raw_len = length(tag_str) + (tag_str != "" ? 1 : 0) + length(rest_str);
+            if (tag_str == "") raw_len = length(rest_str);
+
+            if (max_len != 9999 && raw_len > max_len) {
+                avail_len = max_len - length(tag_str) - (tag_str != "" ? 1 : 0);
+                if (avail_len < 3) {
+                    raw_txt = substr((tag_str != "" ? tag_str " " rest_str : rest_str), 1, max_len - 3) "...";
+                    tag_str = ""; rest_str = raw_txt;
+                    colored_txt = txt_color raw_txt RESET;
+                    raw_len = length(raw_txt);
+                } else {
+                    rest_str = substr(rest_str, 1, avail_len - 3) "...";
+                    raw_len = max_len;
+                }
+            }
+
+            if (tag_str != "") {
+                colored_txt = tag_color tag_str RESET " " txt_color rest_str RESET;
+                raw_len = length(tag_str) + 1 + length(rest_str);
+            } else {
+                colored_txt = txt_color rest_str RESET;
+                raw_len = length(rest_str);
+            }
+        }
+
+        # Manual Padding Generator
+        pad_spaces = "";
+        if (max_len != 9999 && raw_len < max_len) {
+            for (i = 0; i < (max_len - raw_len); i++) pad_spaces = pad_spaces " ";
+        }
+
+        # Print Output
+        printf "%s%-14s%s %s%s %s(%s)%s\n", AMBER, dt, RESET, colored_txt, pad_spaces, PATH_GREY, rel_path, RESET;
+    }' 2>/dev/null
+    printf "%b------------------------------------------------------------%b\n" "$LK_HEADER_ORG" "$LK_RESET"
+
+    if [ "$is_full_mode" -eq 1 ]; then
+        tput smam 2>/dev/null
+        trap - INT
     fi
-
-    printf "%s| LK (LogKlerk) --- Yearly Monthly Summary (%s) ---%s\n" "$LK_HEADER_ORG" "$lkcy_year" "$LK_RESET"
-    _lkc_colorizer < "$lkcy_file"
 }
