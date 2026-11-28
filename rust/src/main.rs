@@ -1,5 +1,5 @@
 // =============================================================================
-// lk — LogKlerk v0.0.1 (experimental) — single-file Rust version
+// lk — LogKlerk v0.0.2 (experimental) — single-file Rust version
 //
 // Port of the original POSIX shell modules (lk.sh + modules/*.sh) into one
 // binary with no external dependencies (std only). The Markdown log format is
@@ -23,7 +23,7 @@ mod default_tags;
 use default_tags::{BUILTIN_EXCLUSIVE, BUILTIN_TAGS};
 
 const LK_STATUS: &str = "experimental";
-const LK_VERSION: &str = "v0.0.1";
+const LK_VERSION: &str = "v0.0.2";
 
 // ----------------------------------------------------------------------------
 // Color palette (ANSI true-color)
@@ -114,9 +114,9 @@ impl Now {
 
 fn now() -> Now {
     let secs = std::time::SystemTime::now()
-    .duration_since(std::time::UNIX_EPOCH)
-    .map(|d| d.as_secs() as c_long)
-    .unwrap_or(0);
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as c_long)
+        .unwrap_or(0);
     let mut tm = CTm {
         tm_sec: 0,
         tm_min: 0,
@@ -251,10 +251,10 @@ fn parse_conf(text: &str, vars: &mut HashMap<String, String>) {
 fn load_cfg() -> Cfg {
     let home = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()));
     let config_dir = home
-    .join(".config")
-    .join("lk")
-    .join(LK_STATUS)
-    .join(LK_VERSION);
+        .join(".config")
+        .join("lk")
+        .join(LK_STATUS)
+        .join(LK_VERSION);
     let config_file = config_dir.join("lk.conf");
 
     if !config_dir.is_dir() {
@@ -275,35 +275,35 @@ fn load_cfg() -> Cfg {
     vars.insert("LK_VERSION".to_string(), LK_VERSION.to_string());
     vars.insert(
         "LK_CONFIG_DIR".to_string(),
-                config_dir.display().to_string(),
+        config_dir.display().to_string(),
     );
     if let Ok(text) = fs::read(&config_file) {
         parse_conf(&String::from_utf8_lossy(&text), &mut vars);
     }
 
     let mut lk_dir = std::env::var("LK_DIR")
-    .ok()
-    .filter(|s| !s.is_empty())
-    .or_else(|| vars.get("LK_DIR").cloned())
-    .unwrap_or_else(|| format!("{}/lk", home.display()));
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| vars.get("LK_DIR").cloned())
+        .unwrap_or_else(|| format!("{}/lk", home.display()));
     while lk_dir.len() > 1 && lk_dir.ends_with('/') {
         lk_dir.pop();
     }
 
     let num = |key: &str, def: usize| -> usize {
         vars.get(key)
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .unwrap_or(def)
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .unwrap_or(def)
     };
     let fmt = vars
-    .get("LK_DEFAULT_FORMAT")
-    .cloned()
-    .filter(|s| !s.is_empty())
-    .unwrap_or_else(|| ".md".to_string());
+        .get("LK_DEFAULT_FORMAT")
+        .cloned()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| ".md".to_string());
     let snap = vars
-    .get("LK_SNAP_DIR")
-    .cloned()
-    .unwrap_or_else(|| format!("{}/snapshots/lk", home.display()));
+        .get("LK_SNAP_DIR")
+        .cloned()
+        .unwrap_or_else(|| format!("{}/snapshots/lk", home.display()));
 
     let modules_dir = config_dir.join("modules");
     Cfg {
@@ -326,8 +326,8 @@ fn load_cfg() -> Cfg {
 // ----------------------------------------------------------------------------
 fn read_text(p: &Path) -> String {
     fs::read(p)
-    .map(|b| String::from_utf8_lossy(&b).into_owned())
-    .unwrap_or_default()
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default()
 }
 
 fn read_lines(p: &Path) -> Vec<String> {
@@ -364,8 +364,8 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 
 fn fname(p: &Path) -> String {
     p.file_name()
-    .map(|s| s.to_string_lossy().into_owned())
-    .unwrap_or_default()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 fn is_digit(b: u8) -> bool {
@@ -379,14 +379,14 @@ fn all_digits(s: &str) -> bool {
 fn is_date_file(name: &str) -> bool {
     let b = name.as_bytes();
     b.len() == 13
-    && name.ends_with(".md")
-    && b[..4].iter().all(|c| is_digit(*c))
-    && b[4] == b'-'
-    && is_digit(b[5])
-    && is_digit(b[6])
-    && b[7] == b'-'
-    && is_digit(b[8])
-    && is_digit(b[9])
+        && name.ends_with(".md")
+        && b[..4].iter().all(|c| is_digit(*c))
+        && b[4] == b'-'
+        && is_digit(b[5])
+        && is_digit(b[6])
+        && b[7] == b'-'
+        && is_digit(b[8])
+        && is_digit(b[9])
 }
 
 fn date_of(p: &Path) -> String {
@@ -396,13 +396,13 @@ fn date_of(p: &Path) -> String {
 fn is_date_str(s: &str) -> bool {
     let b = s.as_bytes();
     b.len() == 10
-    && b[..4].iter().all(|c| is_digit(*c))
-    && b[4] == b'-'
-    && is_digit(b[5])
-    && is_digit(b[6])
-    && b[7] == b'-'
-    && is_digit(b[8])
-    && is_digit(b[9])
+        && b[..4].iter().all(|c| is_digit(*c))
+        && b[4] == b'-'
+        && is_digit(b[5])
+        && is_digit(b[6])
+        && b[7] == b'-'
+        && is_digit(b[8])
+        && is_digit(b[9])
 }
 
 fn is_month_str(s: &str) -> bool {
@@ -427,24 +427,24 @@ fn day_path(date: &str) -> PathBuf {
 
 fn today_path(n: &Now) -> PathBuf {
     cfg()
-    .lk_dir
-    .join(n.year())
-    .join(n.month())
-    .join(format!("{}{}", n.date(), cfg().fmt))
+        .lk_dir
+        .join(n.year())
+        .join(n.month())
+        .join(format!("{}{}", n.date(), cfg().fmt))
 }
 
 fn run_editor(path: &Path) {
     let ed = std::env::var("EDITOR")
-    .ok()
-    .filter(|s| !s.is_empty())
-    .or_else(|| std::env::var("VISUAL").ok().filter(|s| !s.is_empty()))
-    .unwrap_or_else(|| "vi".to_string());
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::var("VISUAL").ok().filter(|s| !s.is_empty()))
+        .unwrap_or_else(|| "vi".to_string());
     let _ = Command::new("sh")
-    .arg("-c")
-    .arg(format!("{} \"$1\"", ed))
-    .arg("lk-editor")
-    .arg(path)
-    .status();
+        .arg("-c")
+        .arg(format!("{} \"$1\"", ed))
+        .arg("lk-editor")
+        .arg(path)
+        .status();
 }
 
 fn flush() {
@@ -492,23 +492,23 @@ fn is_ws(b: u8) -> bool {
 
 fn hhmmss_at(b: &[u8], i: usize) -> bool {
     b.len() >= i + 8
-    && (b'0'..=b'2').contains(&b[i])
-    && is_digit(b[i + 1])
-    && b[i + 2] == b':'
-    && (b'0'..=b'5').contains(&b[i + 3])
-    && is_digit(b[i + 4])
-    && b[i + 5] == b':'
-    && (b'0'..=b'5').contains(&b[i + 6])
-    && is_digit(b[i + 7])
+        && (b'0'..=b'2').contains(&b[i])
+        && is_digit(b[i + 1])
+        && b[i + 2] == b':'
+        && (b'0'..=b'5').contains(&b[i + 3])
+        && is_digit(b[i + 4])
+        && b[i + 5] == b':'
+        && (b'0'..=b'5').contains(&b[i + 6])
+        && is_digit(b[i + 7])
 }
 
 fn hh00_at(b: &[u8], i: usize) -> bool {
     b.len() >= i + 5
-    && (b'0'..=b'2').contains(&b[i])
-    && is_digit(b[i + 1])
-    && b[i + 2] == b':'
-    && b[i + 3] == b'0'
-    && b[i + 4] == b'0'
+        && (b'0'..=b'2').contains(&b[i])
+        && is_digit(b[i + 1])
+        && b[i + 2] == b':'
+        && b[i + 3] == b'0'
+        && b[i + 4] == b'0'
 }
 
 // ^ {4}- (## )?HH:00  -> (hour, index after "HH:00")
@@ -848,9 +848,9 @@ fn colorize_line(line: &str, monthly_rule: bool) -> String {
             && is_digit(b[13])
             && is_digit(b[14])
             && &b[15..17] == b"]]"
-            {
-                return format!("{}{}{}", CYAN, line, RESET);
-            }
+        {
+            return format!("{}{}{}", CYAN, line, RESET);
+        }
     }
     // 3. Hour header
     if let Some(pe) = hour_hdr_prefix(line) {
@@ -892,9 +892,9 @@ fn colorize_lines(lines: &[String], monthly_rule: bool) -> String {
     let mut out = String::new();
     for l in lines {
         let clean: String = l
-        .chars()
-        .filter(|c| *c != '\x1b' && *c != '\r' && *c != '\x08' && *c != '\x07')
-        .collect();
+            .chars()
+            .filter(|c| *c != '\x1b' && *c != '\r' && *c != '\x08' && *c != '\x07')
+            .collect();
         out.push_str(&colorize_line(&clean, monthly_rule));
         out.push('\n');
     }
@@ -936,10 +936,10 @@ fn summary_of_file(path: &Path, anchored: bool) -> Option<String> {
 // Summary column with truncation + padding (used by lksort/lkcy/lkword/lkweight)
 fn fmt_summary(summary: &str, max_len: usize, plan_col: &str, bad_col: &str) -> (String, usize) {
     let is_bad = summary.starts_with("[Anomaly")
-    || summary.starts_with("[Empty")
-    || summary.starts_with("(Empty")
-    || summary.starts_with("[Summary Not Found")
-    || summary.starts_with("[No Sum");
+        || summary.starts_with("[Empty")
+        || summary.starts_with("(Empty")
+        || summary.starts_with("[Summary Not Found")
+        || summary.starts_with("[No Sum");
     if is_bad {
         return (format!("{}{}{}", bad_col, summary, RESET), summary.chars().count());
     }
@@ -1030,8 +1030,8 @@ fn human(x: u64) -> String {
 // Word count like awk's NF (space/tab separated)
 fn nf(s: &str) -> usize {
     s.split(|c: char| c == ' ' || c == '\t' || c == '\n')
-    .filter(|w| !w.is_empty())
-    .count()
+        .filter(|w| !w.is_empty())
+        .count()
 }
 
 fn err(msg: &str) {
@@ -1060,9 +1060,9 @@ fn parse_quoted_after(line: &str, marker: &str) -> Option<String> {
 fn parse_taxonomy_line(line: &str) -> Option<(String, TagKind)> {
     let t = line.trim_start();
     let name: String = t
-    .chars()
-    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-    .collect();
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
     if name.is_empty() {
         return None;
     }
@@ -1127,7 +1127,7 @@ fn lookup_alias(name: &str) -> Option<TagKind> {
 fn daily_header_lines(date: &str, time: &str, title: &str) -> Vec<String> {
     vec![
         format!("- # [[{}]] - {}", date, title),
-            format!("    created: [[{}]] - {}", date, time),
+        format!("    created: [[{}]] - {}", date, time),
     ]
 }
 
@@ -1233,8 +1233,8 @@ fn lk_write(cat: &str, text: &str) -> i32 {
             DIM,
             tl,
             n.date(),
-                 cfg().fmt,
-                 RESET
+            cfg().fmt,
+            RESET
         );
         print_colored(&tail_of(&file, tl), false);
         println!("{}------------------------------------------------------------{}", DIM, RESET);
@@ -1262,8 +1262,8 @@ fn lk_context(prefix: &str, msg: &str) -> i32 {
         "{}--- Tail: Last {} lines from {} ---{}",
         AMBER,
         cfg().tail,
-             fname(&file),
-             RESET
+        fname(&file),
+        RESET
     );
     print_colored(&tail_of(&file, cfg().tail), false);
     0
@@ -1289,8 +1289,8 @@ fn lk_exclusive(folder: &str, prefix: &str, msg: &str) -> i32 {
         "{}--- Tail: Last {} lines from {} ---{}",
         AMBER,
         cfg().tail,
-             fname(&file),
-             RESET
+        fname(&file),
+        RESET
     );
     print_colored(&tail_of(&file, cfg().tail), false);
     0
@@ -1312,9 +1312,9 @@ fn run_note(path: &Path, args: &[String]) -> i32 {
         body.push_str(&format!("- {}\n", args.join(" ")));
         let _ = write_atomic(path, &body);
         let rel = path
-        .strip_prefix(cfg().lk_dir.join("note"))
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| path.display().to_string());
+            .strip_prefix(cfg().lk_dir.join("note"))
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| path.display().to_string());
         println!("\x1b[38;2;100;255;0m✔\x1b[0m Note appended to \x1b[38;2;0;255;255m{}\x1b[0m", rel);
     }
     0
@@ -1364,7 +1364,11 @@ fn draw_header(hour: &str) {
     );
     println!(
         "{} | -------------- LK Interactive Mode (Hybrid Shell & Context) -------------- |{}",
-             GREY, RESET
+        GREY, RESET
+    );
+    println!(
+        "{} | Commands: lkc lkcd lkch lkcm lkcy lks lksum lkstat ... (type lkh) | exit: -q |{}",
+        GREY, RESET
     );
     println!(
         "{} | Hour Block: {}{}{} | Source: {} |{}\n",
@@ -1373,9 +1377,45 @@ fn draw_header(hour: &str) {
         hour,
         GREY,
         cfg().config_dir.display(),
-             RESET
+        RESET
     );
     flush();
+}
+
+// Minimal shell-style line splitter: spaces separate, "..." and '...' group.
+fn split_quoted(s: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    let mut has = false;
+    for c in s.chars() {
+        match quote {
+            Some(q) => {
+                if c == q {
+                    quote = None;
+                } else {
+                    cur.push(c);
+                }
+            }
+            None => {
+                if c == '"' || c == '\'' {
+                    quote = Some(c);
+                    has = true;
+                } else if c == ' ' || c == '\t' {
+                    if has || !cur.is_empty() {
+                        out.push(std::mem::take(&mut cur));
+                        has = false;
+                    }
+                } else {
+                    cur.push(c);
+                }
+            }
+        }
+    }
+    if has || !cur.is_empty() {
+        out.push(cur);
+    }
+    out
 }
 
 fn command_exists(cmd: &str) -> bool {
@@ -1413,9 +1453,9 @@ fn lki(category: String) -> i32 {
     let mut category = category;
     let shell = user_shell();
     let shell_name = Path::new(&shell)
-    .file_name()
-    .map(|s| s.to_string_lossy().trim_start_matches('-').to_string())
-    .unwrap_or_else(|| "sh".to_string());
+        .file_name()
+        .map(|s| s.to_string_lossy().trim_start_matches('-').to_string())
+        .unwrap_or_else(|| "sh".to_string());
     let shell_tag = format!("[[{}]] >>", shell_name);
     let taxo = taxonomy();
 
@@ -1479,8 +1519,9 @@ fn lki(category: String) -> i32 {
 
         let fullscreen = matches!(
             cmd.as_str(),
-                                  "vim" | "vi" | "nano" | "htop" | "top" | "less" | "man" | "tmux" | "screen"
+            "vim" | "vi" | "nano" | "htop" | "top" | "less" | "man" | "tmux" | "screen"
         );
+        let internal_module = cmd != "lki" && MODULE_NAMES.contains(&cmd.as_str());
         let mut tail_n = cfg().tail;
         let active_tag: String;
         let log_text: String;
@@ -1492,6 +1533,17 @@ fn lki(category: String) -> i32 {
             }
             active_tag = ov;
             log_text = args.clone();
+        } else if internal_module {
+            // lkc, lkcy, lkcm, lkcd, ... are run directly by this binary
+            let margs = split_quoted(&args);
+            println!();
+            dispatch(&cmd, &margs);
+            if cmd == "lkv" {
+                draw_header(&n.hour());
+            }
+            println!();
+            flush();
+            continue;
         } else if fullscreen {
             run_shell_line(&shell, &line);
             draw_header(&n.hour());
@@ -1826,13 +1878,13 @@ fn lkcy(args: &[String]) -> i32 {
     }
     println!(
         "{}| LK (LogKlerk) --- Historical Genesis Timeline (ASC) [View: {}] ---{}",
-             HEADER_ORG, view, RESET
+        HEADER_ORG, view, RESET
     );
     for f in date_files_in(&target) {
         let rel = f
-        .strip_prefix(&lk_dir)
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| f.display().to_string());
+            .strip_prefix(&lk_dir)
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| f.display().to_string());
         let date = date_of(&f);
         let dt = format!("[[{}]]", date);
         let mut found = false;
@@ -1865,7 +1917,7 @@ fn lkcy(args: &[String]) -> i32 {
         let pad = if max_len != 9999 && raw_len < max_len { spaces(max_len - raw_len) } else { String::new() };
         println!(
             "{}{:<14}{} {}{} {}({}){}",
-                 AMBER, dt, RESET, colored, pad, PATH_GREY, rel, RESET
+            AMBER, dt, RESET, colored, pad, PATH_GREY, rel, RESET
         );
     }
     println!("{}------------------------------------------------------------{}", HEADER_ORG, RESET);
@@ -1952,8 +2004,8 @@ fn lks(args: &[String]) -> i32 {
         let name = fname(p);
         match pattern_kind {
             1 => name == format!("{}.md", pattern_val),
-                 2 => name.starts_with(&pattern_val) && name.ends_with(".md"),
-                 _ => true,
+            2 => name.starts_with(&pattern_val) && name.ends_with(".md"),
+            _ => true,
         }
     });
     files.sort();
@@ -2135,16 +2187,16 @@ fn show_hourly(lines: &[String], date: &str, plan: bool) {
     let title = if plan { "Hourly Plan & Summaries" } else { "Hourly Summaries" };
     println!("\n{}| LK (LogKlerk) --- {} ({}) ---{}", col, title, date, RESET);
     let d_sum = lines
-    .iter()
-    .find(|l| is_summary_for(l, date))
-    .cloned()
-    .unwrap_or_else(|| "(No Daily Summary Found)".to_string());
+        .iter()
+        .find(|l| is_summary_for(l, date))
+        .cloned()
+        .unwrap_or_else(|| "(No Daily Summary Found)".to_string());
     println!("{}{}{}", AMBER, d_sum, RESET);
     let mut hs: Vec<String> = lines
-    .iter()
-    .filter(|l| hourly_summary_line(l))
-    .map(|l| l.trim_start_matches(|c| c == ' ' || c == '\t').to_string())
-    .collect();
+        .iter()
+        .filter(|l| hourly_summary_line(l))
+        .map(|l| l.trim_start_matches(|c| c == ' ' || c == '\t').to_string())
+        .collect();
     hs.sort();
     for t in hs {
         let b = t.as_bytes();
@@ -2277,7 +2329,7 @@ fn summary_cmd(args: &[String], plan: bool) -> i32 {
         if !file.exists() {
             let lines = vec![
                 format!("- # [[{}]] - (Yearly Summary)", y),
-                    format!("    created: [[{}-01-01]] - {}", y, curr_ts),
+                format!("    created: [[{}-01-01]] - {}", y, curr_ts),
             ];
             let _ = write_lines(&file, &lines);
         }
@@ -2340,7 +2392,7 @@ fn summary_cmd(args: &[String], plan: bool) -> i32 {
     if end < start {
         println!(
             "{}[Error]{} Invalid hour range: End hour ({}) cannot be less than Start hour ({}).",
-                 RED, RESET, end, start
+            RED, RESET, end, start
         );
         return 1;
     }
@@ -2350,7 +2402,7 @@ fn summary_cmd(args: &[String], plan: bool) -> i32 {
     let _ = write_lines(&file, &out);
     println!(
         "{}✔{} Hourly {} {}({:02}:00-{:02}:00){} {}Updated.{}",
-             LIME, RESET, kind, pcol, start, end, RESET, GREY, RESET
+        LIME, RESET, kind, pcol, start, end, RESET, GREY, RESET
     );
     print!("{}", diff);
     show_hourly(&read_lines(&file), &n.date(), plan);
@@ -2380,7 +2432,7 @@ fn ensure_taxonomy_writable() -> Result<(), String> {
             RESET,
             AMBER,
             f.display(),
-                              RESET
+            RESET
         )),
     }
 }
@@ -2392,9 +2444,9 @@ fn append_taxonomy(line: &str) -> io::Result<()> {
 
 fn tag_tail_colorize(line: &str) -> String {
     let name: String = line
-    .chars()
-    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-    .collect();
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
     if !name.is_empty() {
         let rest = &line[name.len()..];
         if let (Some(st), Some(en)) = (rest.find("\"[["), rest.rfind("]] >>\"")) {
@@ -2415,8 +2467,8 @@ fn print_taxonomy_tail(kind: &str) {
         "\n{}--- Tail: Last {} lines from {} ---{}",
         AMBER,
         cfg().set_tail,
-             fname(&cfg().taxonomy_file),
-             RESET
+        fname(&cfg().taxonomy_file),
+        RESET
     );
     for l in tail_of(&cfg().taxonomy_file, cfg().set_tail) {
         println!("{}", tag_tail_colorize(&l));
@@ -2496,11 +2548,11 @@ fn lkfiles(args: &[String]) -> i32 {
         return 1;
     }
     let folder = tag
-    .strip_prefix("[[")
-    .unwrap_or(&tag)
-    .strip_suffix("]]")
-    .unwrap_or(tag.strip_prefix("[[").unwrap_or(&tag))
-    .to_string();
+        .strip_prefix("[[")
+        .unwrap_or(&tag)
+        .strip_suffix("]]")
+        .unwrap_or(tag.strip_prefix("[[").unwrap_or(&tag))
+        .to_string();
     if lookup_alias(&alias).is_some() {
         println!(
             "{}[Warning]{} {}Alias '{}' is already registered in context.sh. Aborting.{}",
@@ -2510,7 +2562,7 @@ fn lkfiles(args: &[String]) -> i32 {
     }
     let func = format!(
         "{}() {{ lk_exclusive_context \"{}\" \"{} >>\" \"$@\"; }}",
-                       alias, folder, tag
+        alias, folder, tag
     );
     if let Err(e) = append_taxonomy(&func) {
         println!("{}[Error]{} {}", RED, RESET, e);
@@ -2576,10 +2628,10 @@ fn lknote(args: &[String]) -> i32 {
             v.sort();
             let ql = q.to_lowercase();
             let hits: Vec<String> = v
-            .iter()
-            .map(|f| f.display().to_string())
-            .filter(|s| s.to_lowercase().contains(&ql))
-            .collect();
+                .iter()
+                .map(|f| f.display().to_string())
+                .filter(|s| s.to_lowercase().contains(&ql))
+                .collect();
             if hits.is_empty() {
                 println!("  {}(No notes found matching '{}'){}", GREY, q, RESET);
             } else {
@@ -2621,9 +2673,9 @@ fn lknote(args: &[String]) -> i32 {
             let full = note_dir().join(&target);
             let func = format!(
                 "{a}() {{ local tgt=\"{p}\"; mkdir -p \"${{tgt%/*}}\" 2>/dev/null; [ ! -f \"$tgt\" ] && touch \"$tgt\"; if [ $# -eq 0 ]; then ${{EDITOR:-vi}} \"$tgt\"; elif [ \"$1\" = \"-v\" ] || [ \"$1\" = \"view\" ]; then cat \"$tgt\"; else printf -- \"- %s\\n\" \"$*\" >> \"$tgt\"; printf \"\\033[38;2;100;255;0m✔\\033[0m Note appended to \\033[38;2;0;255;255m{t}\\033[0m\\n\"; fi; }}",
-                               a = alias,
-                               p = full.display(),
-                               t = target
+                a = alias,
+                p = full.display(),
+                t = target
             );
             if let Err(e) = append_taxonomy(&func) {
                 println!("{}[Error]{} {}", RED, RESET, e);
@@ -2637,7 +2689,7 @@ fn lknote(args: &[String]) -> i32 {
                 "\n{}--- Tail: Last {} lines from context.sh ---{}",
                 AMBER,
                 cfg().set_tail,
-                     RESET
+                RESET
             );
             for l in tail_of(&cfg().taxonomy_file, cfg().set_tail) {
                 println!("{}", note_tail_colorize(&l));
@@ -2661,9 +2713,9 @@ fn lknote(args: &[String]) -> i32 {
 
 fn note_tail_colorize(line: &str) -> String {
     let name: String = line
-    .chars()
-    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-    .collect();
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
     if !name.is_empty() {
         let rest = &line[name.len()..];
         if let Some(st) = rest.find("local tgt=\"") {
@@ -2758,7 +2810,7 @@ fn lkconf(args: &[String]) -> i32 {
         start,
         end,
         fname(&conf_file),
-             RESET
+        RESET
     );
     for ln in start..=end {
         let l = &lines[ln - 1];
@@ -2987,8 +3039,8 @@ fn parse_scope(a: &str) -> Option<(Sc, String)> {
 fn ymd_of(d: &str) -> (i64, i64, i64) {
     (
         d[..4].parse().unwrap_or(1970),
-     d[5..7].parse().unwrap_or(1),
-     d[8..10].parse().unwrap_or(1),
+        d[5..7].parse().unwrap_or(1),
+        d[8..10].parse().unwrap_or(1),
     )
 }
 
@@ -3132,7 +3184,7 @@ fn lksort(args: &[String]) -> i32 {
     print!("\x1b[?7l");
     println!(
         "{}| LK Analytics Dashboard --- [{}] sorted by {} ({}) ---{}",
-             ORANGE, label, metric, order, RESET
+        ORANGE, label, metric, order, RESET
     );
     let max_words = rows.iter().map(|r| r.1).max().unwrap_or(1).max(1);
     let base = format!("{}/", cfg().lk_dir.display());
@@ -3410,7 +3462,7 @@ fn lkvoid(args: &[String]) -> i32 {
         let bar = bar_str(filled, 10, "■", "·");
         println!(
             " {}{:03}.{} {}{}{} │ {}[{}]{} {} Deepest Void: {:<7}{} │ {}(Avg Velocity: {:<7} / log){}",
-                 GREY, idx + 1, RESET, AMBER, date, RESET, color, bar, RESET, color, fmt_time(*gap), RESET, GREY, fmt_time(avg), RESET
+            GREY, idx + 1, RESET, AMBER, date, RESET, color, bar, RESET, color, fmt_time(*gap), RESET, GREY, fmt_time(avg), RESET
         );
     }
     0
@@ -3479,8 +3531,8 @@ fn lksnap(args: &[String]) -> i32 {
     println!(" Source : {}{}{}", PURPLE, src.display(), RESET);
     println!(" Target : {}{}{}", PURPLE, target.display(), RESET);
     let mut snaps: Vec<PathBuf> = fs::read_dir(&snap_dir)
-    .map(|rd| rd.flatten().map(|e| e.path()).collect())
-    .unwrap_or_default();
+        .map(|rd| rd.flatten().map(|e| e.path()).collect())
+        .unwrap_or_default();
     snaps.retain(|p| fname(p).starts_with("lk-snapshot-") && p.is_dir());
     snaps.sort();
     let latest = snaps.last().cloned();
@@ -3507,9 +3559,9 @@ fn lksnap(args: &[String]) -> i32 {
         " {}Hint: To rollback, run: rm -rf {}/* && cp -a {}/* {}/{}",
         GREY,
         src.display(),
-             target.display(),
-             src.display(),
-             RESET
+        target.display(),
+        src.display(),
+        RESET
     );
     0
 }
@@ -3896,10 +3948,10 @@ fn lkspace(args: &[String]) -> i32 {
     let target_val = strip_quotes(&args[2..].join(" "));
     let prefix = format!("{}=", target_var);
     let mapped = read_lines(&map_file)
-    .into_iter()
-    .find(|l| l.starts_with(&prefix))
-    .map(|l| strip_quotes(&l[prefix.len()..]))
-    .unwrap_or_default();
+        .into_iter()
+        .find(|l| l.starts_with(&prefix))
+        .map(|l| strip_quotes(&l[prefix.len()..]))
+        .unwrap_or_default();
     let mapped = if mapped.is_empty() {
         println!("{}[Warn]{} Variable '{}' is not mapped. Using raw name.", AMBER, RESET, target_var);
         target_var.clone()
@@ -5063,9 +5115,9 @@ fn lkyaml(args: &[String]) -> i32 {
             }
             let k = line[..colon].to_string();
             let v = line[colon + 1..]
-            .trim_start_matches(|c: char| c == '"' || c == '\'' || c == ' ' || c == '\t')
-            .trim_end_matches(|c: char| c == '"' || c == '\'' || c == ' ' || c == '\t')
-            .to_string();
+                .trim_start_matches(|c: char| c == '"' || c == '\'' || c == ' ' || c == '\t')
+                .trim_end_matches(|c: char| c == '"' || c == '\'' || c == ' ' || c == '\t')
+                .to_string();
             if action == "keys" {
                 *key_arr.entry(k).or_insert(0) += 1;
             } else if action == "values" && k.to_lowercase() == t_key.to_lowercase() {
@@ -5142,7 +5194,7 @@ fn lkdiversity(args: &[String]) -> i32 {
                 scoped = true;
             }
             _ if (s.len() == 9 && b[4] == b'-' && all_digits(&s[..4]) && all_digits(&s[5..]))
-            || (s.len() == 10 && &s[4..6] == "--" && all_digits(&s[..4]) && all_digits(&s[6..])) =>
+                || (s.len() == 10 && &s[4..6] == "--" && all_digits(&s[..4]) && all_digits(&s[6..])) =>
             {
                 let y1: i64 = s[..4].parse().unwrap_or(0);
                 let y2: i64 = s[s.len() - 4..].parse().unwrap_or(0);
@@ -5179,7 +5231,7 @@ fn lkdiversity(args: &[String]) -> i32 {
     }
     println!(
         "{}| LK Analytics --- Lexical Diversity [{}] via {} ({}) ---{}",
-             ORANGE, label, metric, order, RESET
+        ORANGE, label, metric, order, RESET
     );
     // (score, date, uniq, total, ttr, rttr)
     let mut rows: Vec<(f64, String, usize, usize, f64, f64)> = Vec::new();
@@ -5190,9 +5242,9 @@ fn lkdiversity(args: &[String]) -> i32 {
             let l = remove_all_delim(&line, "![", "]!", false);
             let l = remove_all_delim(&l, "[[", "]]", false);
             let l: String = l
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { ' ' })
-            .collect();
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { ' ' })
+                .collect();
             for w in l.split_whitespace() {
                 total += 1;
                 uniq.insert(w.to_string());
@@ -5274,7 +5326,7 @@ fn lkdiversity(args: &[String]) -> i32 {
         };
         println!(
             " {}{:03}.{} {}[[{}]]{} │ {}[{}]{} {}{} {}{} │ {}{:4} Uniq{} / {}{:4} Totl{} │ {}(RTTR: {:05.2}){}",
-                 GREY, i + 1, RESET, AMBER, date_str, RESET, color, bar, RESET, color, disp, suffix, RESET, CYAN, uq, RESET, GREY, total, RESET, GREY, rttr, RESET
+            GREY, i + 1, RESET, AMBER, date_str, RESET, color, bar, RESET, color, disp, suffix, RESET, CYAN, uq, RESET, GREY, total, RESET, GREY, rttr, RESET
         );
     }
     0
@@ -5285,9 +5337,9 @@ fn lkdiversity(args: &[String]) -> i32 {
 // ============================================================================
 fn tokens_lower(s: &str) -> Vec<String> {
     let t: String = s
-    .chars()
-    .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { ' ' })
-    .collect();
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { ' ' })
+        .collect();
     t.split_whitespace().map(|x| x.to_string()).collect()
 }
 
@@ -5569,12 +5621,12 @@ fn lkwords(args: &[String]) -> i32 {
                 }
             }
             let mut rows: Vec<(String, usize, String)> = freq
-            .into_iter()
-            .map(|(w, c)| {
-                let cat = mapping.get(&w).cloned().filter(|x| !x.is_empty()).unwrap_or_else(|| "Unmapped".to_string());
-                (cat, c, w)
-            })
-            .collect();
+                .into_iter()
+                .map(|(w, c)| {
+                    let cat = mapping.get(&w).cloned().filter(|x| !x.is_empty()).unwrap_or_else(|| "Unmapped".to_string());
+                    (cat, c, w)
+                })
+                .collect();
             rows.sort_by(|a, b| {
                 a.0.cmp(&b.0).then(b.1.cmp(&a.1)).then_with(|| {
                     format!("{}|{}|{}", a.0, a.1, a.2).cmp(&format!("{}|{}|{}", b.0, b.1, b.2))
@@ -5598,7 +5650,7 @@ fn lkwords(args: &[String]) -> i32 {
                         let pad = col_width.saturating_sub(val.chars().count());
                         matrix.insert(
                             (cat.clone(), *c),
-                                      format!("\x1b[36m{}{} {}({}x){}{}", word, RESET, "\x1b[38;2;225;102;0m", freq, RESET, spaces(pad)),
+                            format!("\x1b[36m{}{} {}({}x){}{}", word, RESET, "\x1b[38;2;225;102;0m", freq, RESET, spaces(pad)),
                         );
                         if *c > max_row {
                             max_row = *c;
@@ -5650,44 +5702,44 @@ fn lkwords(args: &[String]) -> i32 {
 // ============================================================================
 const MODULE_NAMES: &[&str] = &[
     "lki", "lkc", "lkcd", "lkch", "lkcm", "lkcy", "lks", "lksum", "lkplan", "lkset", "lkfiles", "lknote", "lkconf",
-"lkv", "lksort", "lkrank", "lkvoid", "lksnap", "lkminute", "lkhour", "lksecond", "lkspace", "lkstat", "lkweight",
-"lkdistraction", "lkchart", "lkyaml", "lkdiversity", "lkword", "lkwords", "lkh",
+    "lkv", "lksort", "lkrank", "lkvoid", "lksnap", "lkminute", "lkhour", "lksecond", "lkspace", "lkstat", "lkweight",
+    "lkdistraction", "lkchart", "lkyaml", "lkdiversity", "lkword", "lkwords", "lkh",
 ];
 
 fn dispatch(name: &str, args: &[String]) -> Option<i32> {
     Some(match name {
         "lki" => lki(String::new()),
-         "lkc" => lkc(args),
-         "lkcd" => lkcd(args),
-         "lkch" => lkch(),
-         "lkcm" => lkcm(args),
-         "lkcy" => lkcy(args),
-         "lks" => lks(args),
-         "lksum" => summary_cmd(args, false),
-         "lkplan" => summary_cmd(args, true),
-         "lkset" => lkset(args),
-         "lkfiles" => lkfiles(args),
-         "lknote" => lknote(args),
-         "lkconf" => lkconf(args),
-         "lkv" => lkv(args),
-         "lksort" => lksort(args),
-         "lkrank" => lkrank(args),
-         "lkvoid" => lkvoid(args),
-         "lksnap" => lksnap(args),
-         "lkminute" => lkminute(),
-         "lkhour" => lkhour(args),
-         "lksecond" => lksecond(),
-         "lkspace" => lkspace(args),
-         "lkstat" => lkstat(args),
-         "lkweight" => lkweight(args),
-         "lkdistraction" | "lkdistracton" => lkdistraction(args),
-         "lkchart" => lkchart(args),
-         "lkyaml" => lkyaml(args),
-         "lkdiversity" => lkdiversity(args),
-         "lkword" => lkword(args),
-         "lkwords" => lkwords(args),
-         "lkh" => lkh(),
-         _ => return None,
+        "lkc" => lkc(args),
+        "lkcd" => lkcd(args),
+        "lkch" => lkch(),
+        "lkcm" => lkcm(args),
+        "lkcy" => lkcy(args),
+        "lks" => lks(args),
+        "lksum" => summary_cmd(args, false),
+        "lkplan" => summary_cmd(args, true),
+        "lkset" => lkset(args),
+        "lkfiles" => lkfiles(args),
+        "lknote" => lknote(args),
+        "lkconf" => lkconf(args),
+        "lkv" => lkv(args),
+        "lksort" => lksort(args),
+        "lkrank" => lkrank(args),
+        "lkvoid" => lkvoid(args),
+        "lksnap" => lksnap(args),
+        "lkminute" => lkminute(),
+        "lkhour" => lkhour(args),
+        "lksecond" => lksecond(),
+        "lkspace" => lkspace(args),
+        "lkstat" => lkstat(args),
+        "lkweight" => lkweight(args),
+        "lkdistraction" | "lkdistracton" => lkdistraction(args),
+        "lkchart" => lkchart(args),
+        "lkyaml" => lkyaml(args),
+        "lkdiversity" => lkdiversity(args),
+        "lkword" => lkword(args),
+        "lkwords" => lkwords(args),
+        "lkh" => lkh(),
+        _ => return None,
     })
 }
 
@@ -5759,9 +5811,9 @@ fn main() {
     }
     let argv: Vec<String> = std::env::args().collect();
     let prog = Path::new(&argv[0])
-    .file_name()
-    .map(|s| s.to_string_lossy().into_owned())
-    .unwrap_or_else(|| "lk".to_string());
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "lk".to_string());
     let args: Vec<String> = argv[1..].to_vec();
 
     // Busybox mode: binary invoked through a symlink (todo, lkc, ...)
@@ -5820,3 +5872,5 @@ fn main() {
     flush();
     std::process::exit(code);
 }
+
+
