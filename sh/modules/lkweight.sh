@@ -285,7 +285,7 @@ lkweight() {
 
                 summary_tag=$(echo "$summary" | grep -o '^!\[[^]]*\]!')
                 if [ -n "$summary_tag" ]; then
-                    summary_rest=$(echo "$summary" | sed "s/^$summary_tag[[:space:]]*//")
+                    summary_rest=$(echo "$summary" | sed "s/^${summary_tag}[[:space:]]*//")
                     summary_colored="${LK_ORANGE}${summary_tag}${LK_RESET} ${LK_GREY}${summary_rest}${LK_RESET}"
                 else
                     summary_colored="${LK_GREY}${summary}${LK_RESET}"
