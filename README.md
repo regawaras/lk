@@ -38,11 +38,21 @@ A port of the original shell modules into one binary with **no external dependen
 
 ```bash
 git clone https://github.com/regawaras/lk.git
-cd lk
+cd lk/rust
 cargo build --release
 ```
 
-The source is a single file, `lk-v0_0_3.rs`, plus the `default_tags` module it imports (`mod default_tags;`). Keep both in your `src/` directory.
+The Rust source lives in `lk/rust/`:
+
+```
+lk/rust/
+├── Cargo.toml
+└── src/
+    ├── main.rs            # LogKlerk core (v0.0.3)
+    └── default_tags.rs    # built-in tags, loaded via `mod default_tags;`
+```
+
+The binary is built as `target/release/lk` (make sure `name = "lk"` is set in `Cargo.toml`).
 
 **2. Put the binary on your `PATH`**
 
