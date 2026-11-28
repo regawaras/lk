@@ -50,37 +50,33 @@ A port of the original shell modules into one binary with **no external dependen
 **1. Build**
 
 ```bash
-git clone [https://github.com/regawaras/lk.git](https://github.com/regawaras/lk.git)
+git clone https://github.com/regawaras/lk.git
 cd lk/rust
 cargo build --release
-
 ```
 
 The Rust source lives in `lk/rust/`:
 
-```
+```text
 lk/rust/
 ├── Cargo.toml
 └── src/
     ├── main.rs            # LogKlerk core (v0.0.3)
     └── default_tags.rs    # built-in tags, loaded via `mod default_tags;`
-
 ```
 
 The binary is built as `target/release/lk` (make sure `name = "lk"` is set in `Cargo.toml`).
 
-**2. Put the binary on your `PATH**`
+**2. Put the binary on your `PATH`**
 
 ```bash
 install -m 755 target/release/lk ~/.local/bin/lk
-
 ```
 
 **3. Create the command shortcuts** (optional, recommended)
 
 ```bash
 lk -install ~/.local/bin
-
 ```
 
 This creates symlinks (`lkc`, `lkcd`, `lks`, `lksum`, `todo`, `ideas`, ...) that all point to the one binary, so you can type `lkc` instead of `lk lkc`. Make sure the directory is on your `PATH`.
@@ -91,14 +87,12 @@ A program can't change its parent shell's directory, so LogKlerk ships a tiny wr
 
 ```bash
 eval "$(lk --init)"
-
 ```
 
 For fish:
 
 ```fish
 lk --init fish | source
-
 ```
 
 With the wrapper installed, if you `cd` somewhere inside interactive mode, your shell lands in that same directory when you exit. Without it, LogKlerk prints a short hint on exit if the directory changed.
@@ -107,9 +101,8 @@ With the wrapper installed, if you `cd` somewhere inside interactive mode, your 
 
 On first run, LogKlerk creates its config at:
 
-```
+```text
 ~/.config/lk/experimental/v0.0.3/lk.conf
-
 ```
 
 > Config folders are versioned. When upgrading, copy your settings from the previous version's folder.
@@ -121,7 +114,6 @@ LK_DIR="$HOME/lk"
 LK_TAIL_LINES="10"
 LK_DEFAULT_FORMAT=".md"
 LK_COLOR_HOURLY_SUMMARY="yellow"
-
 ```
 
 | Key | Meaning | Default |
@@ -139,7 +131,6 @@ Change any value from inside LogKlerk:
 ```bash
 lkconf LK_TAIL_LINES="5"
 lkconf LK_COLOR_HOURLY_SUMMARY="#FF8800"
-
 ```
 
 **Color formats** for `LK_COLOR_HOURLY_SUMMARY`: a name (`yellow`, `amber`, `gold`, `orange`, `red`, `green`, `lime`, `cyan`, `blue`, `purple`, `magenta`, `pink`, `white`, `grey`), hex (`#RRGGBB`), decimal `R,G,B` (e.g. `255,221,0`), or a 0-255 terminal color index.
@@ -165,17 +156,15 @@ todo "Fix the Nginx reverse proxy routing"      # same thing, via symlink
 
 # Open interactive mode
 lk
-
 ```
 
 ### 2. Interactive Mode
 
 Run `lk` (or `lki`) with no arguments:
 
-```
+```text
 Log to ~/lk/2026/2026-04/2026-04-12.md
 >> 
-
 ```
 
 | You type | What happens |
@@ -204,7 +193,6 @@ lkch                # Current hour block
 lkcd [YYYYMMDD]     # Daily + hourly summary recap
 lkcm [YYYYMM]       # All daily summaries in a month
 lkcy [YYYY]         # Historical timeline (min|mid|max|fit|full)
-
 ```
 
 ### 4. Searching
@@ -214,7 +202,6 @@ lks "Nginx"            # Search the whole vault
 lks -t "Nginx"         # Today only
 lks -08 "server"       # Any day, but only entries from the 08:xx hour
 lks 2026-04 "Linux"    # A specific month
-
 ```
 
 ### 5. Summaries & Plans
@@ -227,7 +214,6 @@ lksum 14 "Deep work: database refactor"     # Hour 14 today
 lksum 08-10 "Morning block"                 # Batch of hours
 
 lkplan 20260423 "Ship v0.0.3"               # Same targets, tagged ![PLAN]!
-
 ```
 
 ## 🏷️ Dynamic Tags (Taxonomy)
@@ -237,7 +223,6 @@ lkset wbl="[[Web]]"            # New alias: wbl -> [[Web]] >>
 lkfiles ideas="[[Ideas]]"      # Exclusive alias: logs into its own folder
 lknote groceries="groceries.md"  # Alias pointing to a static note
 lk tags                        # List every registered alias
-
 ```
 
 Use them directly or from interactive mode:
@@ -245,7 +230,6 @@ Use them directly or from interactive mode:
 ```bash
 wbl "Read the htmx docs"
 # - 15:30:00 - [[Web]] >> Read the htmx docs
-
 ```
 
 ## 🧰 Full Command Reference
@@ -263,12 +247,11 @@ Type `lkh` (or `lk -h`) for the built-in manual. Overview:
 
 ## 🏗️ Data Structure
 
-```
+```text
 ~/lk/
 └── 2026/
     └── 2026-04/
         └── 2026-04-12.md
-
 ```
 
 Example daily file:
@@ -282,7 +265,6 @@ Example daily file:
   - 08:41:10 - [[lk]] >> lkc
 - ## 15:00 - (Hourly Summary)
   - 15:30:00 - [[Writing on Vim]] >> Drafting the README.md
-
 ```
 
 Entries are inserted in chronological order into their hour block. Commands run inside interactive mode are tagged with your shell (e.g. `[[zsh]] >>`), and LK's own commands with `[[lk]] >>`.
@@ -295,11 +277,11 @@ The original **100% POSIX-compliant** implementation, written in pure `sh`. Choo
 
 ## Features
 
-* **POSIX core**: runs on `dash`, `bash`, `zsh`, Alpine Linux, NixOS and macOS.
-* **Hybrid interactive mode**: detects `bash` to enable GNU Readline (arrow-key navigation) and falls back to plain `read` on strict POSIX shells.
-* **XDG Base Directory standard**: data in `~/.local/share/logklerk`, config in `~/.config/logklerk`.
-* **Concurrency safe**: file-descriptor locking (`flock -x 9`).
-* **Location manager**: move your data directory to a synced folder (Dropbox, Nextcloud, ...) with one command.
+- **POSIX core**: runs on `dash`, `bash`, `zsh`, Alpine Linux, NixOS and macOS.
+- **Hybrid interactive mode**: detects `bash` to enable GNU Readline (arrow-key navigation) and falls back to plain `read` on strict POSIX shells.
+- **XDG Base Directory standard**: data in `~/.local/share/logklerk`, config in `~/.config/logklerk`.
+- **Concurrency safe**: file-descriptor locking (`flock -x 9`).
+- **Location manager**: move your data directory to a synced folder (Dropbox, Nextcloud, ...) with one command.
 
 ## Installation
 
@@ -309,8 +291,7 @@ LogKlerk (shell) is a collection of functions and aliases, so it must be **sourc
 
 ```bash
 mkdir -p ~/.config/logklerk
-curl -o ~/.config/logklerk/lk.sh [https://raw.githubusercontent.com/regawaras/lk/main/lk.sh](https://raw.githubusercontent.com/regawaras/lk/main/lk.sh)
-
+curl -o ~/.config/logklerk/lk.sh https://raw.githubusercontent.com/regawaras/lk/main/lk.sh
 ```
 
 **2. Source it from your shell profile**
@@ -320,7 +301,6 @@ Bash / Zsh (`~/.bashrc` or `~/.zshrc`):
 ```bash
 echo '. "$HOME/.config/logklerk/lk.sh"' >> ~/.bashrc
 source ~/.bashrc
-
 ```
 
 Strict POSIX / Dash (`~/.profile` and `~/.shinit`):
@@ -328,7 +308,6 @@ Strict POSIX / Dash (`~/.profile` and `~/.shinit`):
 ```bash
 echo 'export ENV="$HOME/.shinit"' >> ~/.profile
 echo '. "$HOME/.config/logklerk/lk.sh"' >> ~/.shinit
-
 ```
 
 ## Usage
@@ -345,7 +324,6 @@ todo "Fix the Nginx reverse proxy routing"
 ideas "Build an automated backup script using rsync"
 sog "How to configure dash as default shell"
 problems "Kernel panic after updating NVIDIA drivers"
-
 ```
 
 **Reading**
@@ -356,7 +334,6 @@ lkcs                # Today's main summaries (daily & hourly)
 lkc 2026-04-12      # A specific date
 lkc -m              # Daily summaries for the current month
 lkc 08-12           # Today between 08:00 and 12:00
-
 ```
 
 **Searching**
@@ -366,7 +343,6 @@ lks "Nginx"            # Global search
 lks -t "Nginx"         # Today only
 lks -08 "server"       # Only at 08:xx
 lks 2026-04 "Linux"    # A specific month
-
 ```
 
 **Custom tags** (stored in `~/.config/logklerk/lk_tags`)
@@ -375,7 +351,6 @@ lks 2026-04 "Linux"    # A specific month
 lk -add wrv "Writing on Vim"
 wrv "Drafting the README.md documentation"
 # - 15:30:00 - [[Writing on Vim]] >> Drafting the README.md documentation
-
 ```
 
 **Location manager**
@@ -384,7 +359,6 @@ wrv "Drafting the README.md documentation"
 lk -set -dir ~/Dropbox/LogKlerk     # custom path
 lk -set -dir -default               # XDG default (~/.local/share/logklerk)
 lk -set -dir -home                  # ~/LogKlerk
-
 ```
 
 **Summaries**
@@ -393,7 +367,6 @@ lk -set -dir -home                  # ~/LogKlerk
 lk -set -today "Focused on backend optimization"
 lk -set 2026-04-10 "Vacation day"
 lk -set 08-10 "Deep Work: Database Refactoring"
-
 ```
 
 **Manual editing** (uses `$EDITOR`, defaults to `vim`)
@@ -401,14 +374,12 @@ lk -set 08-10 "Deep Work: Database Refactoring"
 ```bash
 lkv                 # today's file
 lkv 2026-04-10      # a specific date
-
 ```
 
 **Data layout**
 
-```
+```text
 ~/.local/share/logklerk/2026/2026-04/2026-04-12.md
-
 ```
 
 ```markdown
@@ -421,29 +392,20 @@ lkv 2026-04-10      # a specific date
   - 08:15:30 - [[TODO]] >> Fix the Nginx reverse proxy routing
 - 15:00 - (Hourly Summary)
   - 15:30:00 - [[Writing on Vim]] >> Drafting the README.md
-
 ```
 
 ---
 
 # ⚙️ Assembly Version (v0.0.1)
 
-A standalone **x86-64 Linux** implementation written in GNU Assembler (`as`, Intel syntax) with **no `libc**` and pure Linux system calls (`clock_gettime`, `open`, `write`, `mkdir`, `ioctl`, `exit`). Instead of Markdown files, it writes RFC 4180 CSV entries (`date,context,activity`).
+A standalone **x86-64 Linux** implementation written in GNU Assembler (`as`, Intel syntax) with **no `libc`** and pure Linux system calls (`clock_gettime`, `open`, `write`, `mkdir`, `ioctl`, `exit`). Instead of Markdown files, it writes RFC 4180 CSV entries (`date,context,activity`).
 
 ## Features
 
-* **Zero dependencies**: no `libc`, no runtime, fixed `.bss` buffers with explicit bounds checks, and no recursion or stack arrays.
-
-
-* **CSV output with escaping**: quotes fields containing `,` or `"`, doubles internal `"`, and replaces CR/LF with spaces so each entry stays on a single line.
-
-
-* **Race-free & concurrency safe**: creates log files with `O_CREAT|O_EXCL` (mode `0600`), rejects symlinks with `O_NOFOLLOW`, and writes each complete row with `O_APPEND`.
-
-
-* **Configurable timezone & taxonomy**: supports `DIR`, `TZ_OFFSET` (in seconds), and up to 32 `[taxonomy]` entries in `lk.conf`.
-
-
+- **Zero dependencies**: no `libc`, no runtime, fixed `.bss` buffers with explicit bounds checks, and no recursion or stack arrays.
+- **CSV output with escaping**: quotes fields containing `,` or `"`, doubles internal `"`, and replaces CR/LF with spaces so each entry stays on a single line.
+- **Race-free & concurrency safe**: creates log files with `O_CREAT|O_EXCL` (mode `0600`), rejects symlinks with `O_NOFOLLOW`, and writes each complete row with `O_APPEND`.
+- **Configurable timezone & taxonomy**: supports `DIR`, `TZ_OFFSET` (in seconds), and up to 32 `[taxonomy]` entries in `lk.conf`.
 
 ## 🚀 Build & Installation
 
@@ -452,14 +414,12 @@ A standalone **x86-64 Linux** implementation written in GNU Assembler (`as`, Int
 ```bash
 as --64 -g lk.s -o lk.o
 ld -z noexecstack -z relro -z now -o lk lk.o
-
 ```
 
-**2. Put the binary on your `PATH**`
+**2. Put the binary on your `PATH`**
 
 ```bash
 install -m 755 lk ~/.local/bin/lk
-
 ```
 
 ## ⚙️ Configuration
@@ -477,18 +437,11 @@ claude="Claude"
 soy="Search on Youtube"
 diary="Diary"
 com="Commentary"
-
 ```
 
-* `DIR`: log directory (`$HOME` or leading `~` is expanded; trailing `/` is added automatically; created with `mkdir -p` mode `0700`).
-
-
-* `TZ_OFFSET`: timezone offset in seconds added to UTC time (clamped at `0` if negative).
-
-
-* `[taxonomy]`: maps shortcut keys to context names (up to 32 entries).
-
-
+- `DIR`: log directory (`$HOME` or leading `~` is expanded; trailing `/` is added automatically; created with `mkdir -p` mode `0700`).
+- `TZ_OFFSET`: timezone offset in seconds added to UTC time (clamped at `0` if negative).
+- `[taxonomy]`: maps shortcut keys to context names (up to 32 entries).
 
 ## 📖 Usage
 
@@ -497,17 +450,15 @@ lk -h | --help              # Show usage help
 lk                          # Interactive mode (exit, quit, or Ctrl-D to quit; shows `lk> ` on a TTY)
 lk <key> <text...>          # Log with context from [taxonomy]
 lk <command...>             # Unknown first token falls back to context "bash"
-
 ```
 
 ### Data Layout & Format
 
 Log files are named `<timestamp>.csv` (derived from the first entry's timestamp) inside `DIR`:
 
-```
+```text
 ~/.local/share/logklerk/
 └── 20261128T162600.csv
-
 ```
 
 Example CSV content:
@@ -516,7 +467,6 @@ Example CSV content:
 date,context,activity
 20261128T162600.123,Googling,x86-64 linux syscall clock_gettime
 20261128T162615.450,bash,ls -la
-
 ```
 
 ---
@@ -527,11 +477,10 @@ The Rust and Shell versions both write plain Markdown files in the same `YYYY/YY
 
 1. **Back up first**: copy your vault directory somewhere safe.
 2. Point the Rust version at your existing data in `lk.conf`:
-```bash
-lkconf LK_DIR="$HOME/.local/share/logklerk"
 
-```
-
+   ```bash
+   lkconf LK_DIR="$HOME/.local/share/logklerk"
+   ```
 
 3. Open a few days with `lkc <date>` and confirm they look right before relying on it.
 
@@ -542,6 +491,3 @@ Config files, tags and commands are **not** shared across versions: re-create yo
 ## 📄 License
 
 This project is licensed under the MIT License. Feel free to fork, modify and improve!
-
-```
-
