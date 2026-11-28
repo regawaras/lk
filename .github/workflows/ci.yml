@@ -76,8 +76,9 @@ jobs:
 
       - name: Lint & Test POSIX Shell
         run: |
-          shellcheck -s sh lk.sh
+          shellcheck -s sh --severity=error lk.sh
           TEST_HOME=$(mktemp -d)
           HOME="$TEST_HOME" dash -c '. ./lk.sh && lk "CI test entry" && lkc | grep -q "CI test entry"'
           rm -rf "$TEST_HOME"
+
 

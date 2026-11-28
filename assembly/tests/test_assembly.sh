@@ -16,15 +16,15 @@ readelf -lW "$BIN" | grep -q "GNU_STACK.*RW " || { echo "FAIL: Stack executable!
 echo "PASS: Stack non-executable (NX)"
 
 echo "=== 2. Read Fragmentation Test (1 byte per cycle) ==="
-OUT=$(HOME="$TEST_DIR" timeout 5 python3 -c '
+HOME="$TEST_DIR" timeout 5 python3 -c '
 import sys, time
-for ch in "echo test_ok\n":
+for ch in "echo tes_ok\n":
     sys.stdout.write(ch)
     sys.stdout.flush()
     time.sleep(0.005)
-' | HOME="$TEST_DIR" "$BIN")
-echo "$OUT" | grep -q '"echo test_ok"' || { echo "FAIL: Fragmentation failed"; exit 1; }
-echo "PASS: Read fragmentation succeeded"
+' | HOME="$TEST_DIR" "$BIN" > /dev/null
+grep -rq '"echo tes_ok"' "$TEST_DIR/logs/" || { echo "FAIL: Fragmentation failed"; exit 1; }
+echo "PASS: Read fragmentation passed"
 
 echo "=== 3. Line Length & CSV Escaping Fuzzing ==="
 HOME="$TEST_DIR" timeout 5 python3 -c '
