@@ -1,34 +1,50 @@
 # =====================================================================
-#  LogKlerk Assembly CSV Version  v0.0.2
-#  x86-64 Linux | GNU as (sintaks Intel) | tanpa libc, murni syscall
+#  LogKlerk Assembly CSV Version  v0.0.3
+#  x86-64 Linux | GNU as (Intel syntax) | no libc, pure syscalls
 #
-#  Build :  as --64 -g lk-assembly-v0.0.2.s -o lk.o
+#  Layout
+#    src/main.asm          core: config, logging, shell, lkset, REPL
+#    src/modules/lkc.asm   lkc log reader (pulled in with .include)
+#
+#  Build (from the repository root)
+#           as --64 -g -I src src/main.asm -o lk.o
 #           ld -z noexecstack -z relro -z now -o lk lk.o
 #
-#  Perubahan dari v0.0.1
-#    - Semua waktu = UTC (TZ_OFFSET dihapus)
-#    - Config: DIR -> LK_DIR, + LK_NAME_FORMAT, LK_DEFAULT_FORMAT,
-#              LK_TAIL_LINES, LKSET_TAIL_LINES, LK_COLOR_*
-#    - CSV: date,tags,context,activity
-#    - Bisa menjalankan perintah Linux (sh -c) + builtin cd
-#    - Taxonomy mode   : "lk [[Googling]] > "
-#    - lkset taxonomy  : tulis ulang lk.conf lalu reload
-#    - lkc             : baca log dengan filter tanggal + asc/desc + warna
+#  Changes from v0.0.2
+#    - main.s -> main.asm; lkc moved out of main into src/modules/lkc.asm
+#    - All code comments are now in English
+#    - Timestamps are fully ISO 8601 basic format YYYYMMDDThhmmss (LOCAL time);
+#      the unusable .SSS milliseconds suffix was removed
+#    - context and activity are always written as quoted CSV strings:
+#          YYYYMMDDThhmmss,lktags,"lkcontext","log activity"
+#    - Times are LOCAL time (zone from $TZ or /etc/localtime, TZif parsed
+#      without libc; falls back to UTC if no zone file is readable)
+#    - Default grey is a lighter grey (256-color 250)
+#    - lkc defaults to the current (local) day; "lkc all" lists every file
+#    - Default colors: orange date, yellow tags, purple context, grey activity
+#    - LK_NAME_FORMAT also accepts "hh" as the hour token (ISO notation)
+#    - Fix: entering/leaving taxonomy mode is logged as  lk,"lktags"
+#      (was  lktags,"")
+#    - Fix: the first word is optional as a command. A line whose first word
+#      is not a command is only logged as a note (tags "none", empty context)
+#      and is never run, so no more "command not found" noise
+#    - Fix: Linux commands, aliases and functions from ~/.bashrc and
+#      ~/.profile work in basic mode AND in taxonomy (context) mode
 #
-#  KONVENSI REGISTER INTERNAL (sama dengan System V AMD64)
-#    argumen      : rdi, rsi, rdx, rcx, r8, r9
+#  INTERNAL REGISTER CONVENTION (same as System V AMD64)
+#    arguments    : rdi, rsi, rdx, rcx, r8, r9
 #    return       : rax
-#    callee-saved : rbx, rbp, r12-r15  (fungsi yg memakainya WAJIB push/pop)
-#    caller-saved : rax, rcx, rdx, rsi, rdi, r8-r11 (boleh dirusak fungsi)
-#    `syscall` merusak: rax (return), rcx, r11. Sisanya dipertahankan kernel.
-#    Setiap fungsi mencantumkan "CLOBBER" = register caller-saved yg dirusak.
+#    callee-saved : rbx, rbp, r12-r15  (a function that uses them MUST push/pop)
+#    caller-saved : rax, rcx, rdx, rsi, rdi, r8-r11 (a function may clobber them)
+#    `syscall` clobbers: rax (return), rcx, r11. The kernel preserves the rest.
+#    Every function lists its "CLOBBER" = caller-saved registers it destroys.
 #
-#  Stack: tanpa rekursi, tanpa array di stack. Semua buffer di .bss,
-#  ukuran tetap, setiap penulisan dicek terhadap batasnya.
+#  Stack: no recursion, no arrays on the stack. All buffers live in .bss with
+#  fixed sizes, and every write is checked against its limit.
 # =====================================================================
         .intel_syntax noprefix
 
-# ---------- nomor syscall Linux x86-64 ----------
+# ---------- Linux x86-64 syscall numbers ----------
         .equ SYS_read,          0
         .equ SYS_write,         1
         .equ SYS_open,          2
@@ -45,8 +61,10 @@
         .equ SYS_unlink,        87
         .equ SYS_getdents64,    217
         .equ SYS_clock_gettime, 228
+        .equ SYS_dup2,          33
+        .equ SYS_pipe2,         293
 
-# ---------- flag open() ----------
+# ---------- open() flags ----------
         .equ O_RDONLY,    0x0
         .equ O_WRONLY,    0x1
         .equ O_CREAT,     0x40
@@ -58,21 +76,18 @@
         .equ EEXIST_NEG,  -17
         .equ EINTR_NEG,   -4
 
-# ---------- batas buffer ----------
-        .equ LINEMAX,   2047        # 1 baris input interaktif
-        .equ ACTMAX,    2047        # activity dari argv
-        .equ ENTRYMAX,  8192        # 1 baris CSV
+# ---------- buffer limits ----------
+        .equ LINEMAX,   2047        # one interactive input line
+        .equ ACTMAX,    2047        # activity from argv
+        .equ ENTRYMAX,  8192        # one CSV line
         .equ PATHMAX,   4096
-        .equ PATH_RESERVE, 160      # sisa utk nama file di belakang DIR
+        .equ PATH_RESERVE, 160      # room left for the file name after DIR
         .equ CONFMAX,   16383
-        .equ NEWMAX,    17408       # config baru (CONFMAX + ruang utk 1 entri)
+        .equ NEWMAX,    17408       # new config (CONFMAX + room for one entry)
         .equ INBUF_SZ,  4096
         .equ OUTSZ,     65536
         .equ TAILWIN,   65536
-        .equ FILEMAX,   4194304     # 4 MiB per file CSV utk lkc
-        .equ LINEPTRS,  65536       # baris cocok per file utk lkc
-        .equ DIRSZ,     262144
-        .equ MAXFILES,  4096
+        .equ TZMAX,     16384       # max size of a TZif zone file
         .equ TAX_MAX,   32
 
 # =====================================================================
@@ -128,15 +143,36 @@ s_lktags:       .asciz "lktags"
 s_none:         .asciz "none"
 s_bash:         .asciz "bash"
 s_empty:        .asciz ""
-s_asc:          .asciz "asc"
-s_desc:         .asciz "desc"
 s_opt_h:        .asciz "-h"
 s_opt_help:     .asciz "--help"
 s_bin_sh:       .asciz "/bin/sh"
 s_sh_name:      .asciz "sh"
 s_dash_c:       .asciz "-c"
 s_exec_arg:     .asciz "exec \"$@\""
-# kata yang tidak boleh jadi key taxonomy (daftar cstr, diakhiri string kosong)
+s_tz_eq:        .asciz "TZ="
+s_zoneinfo:     .asciz "/usr/share/zoneinfo/"
+s_localtime:    .asciz "/etc/localtime"
+s_bash_path:    .asciz "/bin/bash"
+s_bash_name:    .asciz "bash"
+s_dash_i:       .asciz "-i"
+# Probe script run as:  bash [-i] -c <script> lk <line>   (fd 3 = pipe to lk)
+# It reports on fd 3 whether the FIRST WORD of the line is a command, alias,
+# function, builtin or keyword ("1") or plain text ("0"). Only for "1" does it
+# then run the whole line, so plain text never produces "command not found".
+s_probe_script:
+        .ascii "[ -r \"$HOME/.profile\" ] && . \"$HOME/.profile\" >/dev/null 2>&1\n"
+        .ascii "unset HISTFILE\n"
+        .ascii "w=${1%%[[:space:]|&;<>()]*}\n"
+        .ascii "case $w in\n"
+        .ascii "\"\") ok=1;;\n"
+        .ascii "*=*) ok=1;;\n"
+        .ascii "\"~\"/*) type -- \"$HOME${w#\\~}\" >/dev/null 2>&1 && ok=1 || ok=0;;\n"
+        .ascii "*) type -- \"$w\" >/dev/null 2>&1 && ok=1 || ok=0;;\n"
+        .ascii "esac\n"
+        .ascii "echo $ok >&3\n"
+        .ascii "exec 3>&-\n"
+        .asciz "[ \"$ok\" = 1 ] && eval \"$1\"\n"
+# words that may not be used as taxonomy keys (cstr list, ends with an empty string)
 s_reserved:     .asciz "lk"
                 .asciz "lkc"
                 .asciz "lkset"
@@ -154,13 +190,11 @@ s_pfx_new:      .asciz "[>] "
 s_pfx_old:      .asciz "    "
 s_loggedinto:   .asciz "[>] logged into "
 s_taxblock:     .asciz "[!] [taxonomy]\n"
-s_lbl_file:     .asciz "[!] "
 s_eqq:          .ascii "=\""
 s_qnl:          .ascii "\"\n"
-s_noentries:    .asciz "[!] no entries\n"
 s_reset:        .asciz "\033[0m"
 
-# ---- nama warna -> kode SGR ----
+# ---- color name -> SGR code ----
 cn_grey:        .asciz "grey"
 cn_red:         .asciz "red"
 cn_green:       .asciz "green"
@@ -169,7 +203,7 @@ cn_blue:        .asciz "blue"
 cn_magenta:     .asciz "magenta"
 cn_cyan:        .asciz "cyan"
 cn_white:       .asciz "white"
-sg_grey:        .asciz "\033[90m"
+sg_grey:        .asciz "\033[38;5;250m"       # light grey (not white)
 sg_red:         .asciz "\033[31m"
 sg_green:       .asciz "\033[32m"
 sg_yellow:      .asciz "\033[33m"
@@ -177,8 +211,12 @@ sg_blue:        .asciz "\033[34m"
 sg_magenta:     .asciz "\033[35m"
 sg_cyan:        .asciz "\033[36m"
 sg_white:       .asciz "\033[37m"
+cn_orange:      .asciz "orange"
+cn_purple:      .asciz "purple"
+sg_orange:      .asciz "\033[38;5;208m"
+sg_purple:      .asciz "\033[38;5;135m"
 
-# ---- tabel token LK_NAME_FORMAT: 4 byte token, len, offset di tsbuf, jumlah salin, pad ----
+# ---- LK_NAME_FORMAT token table: 4-byte token, len, offset in tsbuf, copy count, pad ----
 fn_tab:
         .ascii "YYYY"
         .byte 4,0,4,0
@@ -192,15 +230,18 @@ fn_tab:
         .byte 2,11,2,0
         .ascii "ss\0\0"
         .byte 2,13,2,0
+        .ascii "hh\0\0"
+        .byte 2,9,2,0
 
 m_usage:
-        .ascii "LogKlerk asm v0.0.2\n"
+        .ascii "LogKlerk asm v0.0.3\n"
         .ascii "  lk                      mode interaktif (exit/quit/Ctrl-D keluar)\n"
         .ascii "  lk <key> <teks...>      catat dgn konteks dari [taxonomy]\n"
-        .ascii "  lk lkc [filter] [asc|desc]   baca log (YYYY, YYYYMM, YYYYMMDD, YYYYMMDDTHH, a-b)\n"
+        .ascii "  lk lkc [all|filter] [asc|desc]   baca log (default: hari ini (waktu lokal); YYYY, YYYYMM, YYYYMMDD, YYYYMMDDThh, a-b)\n"
         .ascii "  lk lkset taxonomy k=\"V\"      tambah/ubah taxonomy di lk.conf\n"
-        .ascii "  lk <perintah...>        jalankan perintah Linux dan catat sbg \"bash\"\n"
-        .ascii "config: ~/.config/logklerk/lk.conf   (semua waktu = UTC)\n"
+        .ascii "  lk <perintah...>        jalankan perintah/alias Linux dan catat sbg \"bash\"\n"
+        .ascii "  <teks biasa>            kata pertama bukan perintah => hanya dicatat sbg catatan\n"
+        .ascii "config: ~/.config/logklerk/lk.conf   (semua waktu = waktu lokal)\n"
         .equ m_usage_len, . - m_usage
 m_nohome:   .ascii "lk: variabel HOME tidak ada\n"
         .equ m_nohome_len, . - m_nohome
@@ -224,11 +265,6 @@ m_fork:     .ascii "lk: fork/wait gagal\n"
         .equ m_fork_len, . - m_fork
 m_toomany:  .ascii "lk: terlalu banyak argumen (maks 64)\n"
         .equ m_toomany_len, . - m_toomany
-m_lkc_usage:
-        .ascii "[!] lkc [YYYY|YYYYMM|YYYYMMDD|YYYYMMDDTHH|<dari>-<sampai>] [asc|desc]\n"
-        .equ m_lkc_usage_len, . - m_lkc_usage
-m_nodir:    .ascii "[!] lkc: folder log tidak bisa dibaca\n"
-        .equ m_nodir_len, . - m_nodir
 m_lkset_usage:
         .ascii "[!] pakai: lkset taxonomy key=\"Value\"  (key: huruf/angka/_/-, maks 32; value maks 128, tanpa tanda kutip)\n"
         .equ m_lkset_usage_len, . - m_lkset_usage
@@ -242,14 +278,14 @@ m_conf_wr:  .ascii "[!] lkset: gagal menulis lk.conf\n"
 # =====================================================================
         .section .data
         .balign 8
-fd:         .quad -1                # fd file log, -1 = belum dibuka
+fd:         .quad -1                # log file fd, -1 = not opened yet
 tail_lines: .quad 3
 lkset_tail: .quad 3
-cli_flag:   .quad 0                 # 1 = dipanggil sebagai `lk <args>`
+cli_flag:   .quad 0                 # 1 = invoked as `lk <args>`
 exit_code:  .quad 0
 color_on:   .quad 0
 
-# tabel setting: {nama, jenis (0=string ptr, 1=integer), alamat target}
+# settings table: {name, kind (0=string ptr, 1=integer), target address}
 setting_tab:
         .quad s_k_dir,      0, dir_ptr
         .quad s_k_namefmt,  0, name_fmt_ptr
@@ -271,9 +307,11 @@ color_tab:
         .quad cn_magenta, sg_magenta
         .quad cn_cyan,    sg_cyan
         .quad cn_white,   sg_white
+        .quad cn_orange,  sg_orange
+        .quad cn_purple,  sg_purple
         .quad 0, 0
 col_defaults:
-        .quad cn_grey, cn_yellow, cn_cyan, 0     # date, tags, context, activity (0 = tanpa warna)
+        .quad cn_orange, cn_yellow, cn_purple, cn_grey   # date, tags, context, activity
 
 # =====================================================================
         .section .bss
@@ -282,8 +320,8 @@ argc:       .skip 8
 argv_ptr:   .skip 8
 envp_ptr:   .skip 8
 home_ptr:   .skip 8
-dir_ptr:    .skip 8                 # nilai LK_DIR mentah (menunjuk ke confbuf)
-dir_len:    .skip 8                 # panjang LK_DIR terekspansi (berakhir '/')
+dir_ptr:    .skip 8                 # raw LK_DIR value (points into confbuf)
+dir_len:    .skip 8                 # expanded LK_DIR length (ends with '/')
 name_fmt_ptr: .skip 8
 ext_ptr:    .skip 8
 col_ptr:    .skip 32
@@ -294,20 +332,25 @@ in_len:     .skip 8
 out_pos:    .skip 8
 wstatus:    .skip 8
 last_status:.skip 8
-line_trunc: .skip 8                 # 1 = baris input terakhir terpotong
+line_trunc: .skip 8                 # 1 = last input line was truncated
 h_toklen:   .skip 8
 h_savech:   .skip 8
 h_ctx:      .skip 8
 pr_fend:    .skip 8
+tz_loaded:  .skip 8                 # 1 = zone file load attempted
+tz_ok:      .skip 8                 # 1 = zone data usable
+tz_timecnt: .skip 8
+tz_typecnt: .skip 8
+tz_tsz:     .skip 8                 # transition time size: 4 or 8 bytes
+tz_times:   .skip 8                 # -> transition times (big endian)
+tz_idx:     .skip 8                 # -> transition type indexes
+tz_tt:      .skip 8                 # -> ttinfo records (6 bytes each)
+tzbuf:      .skip TZMAX+16
+probe_pid:  .skip 8                 # pid of the bash probe child (0 = none)
+probe_res:  .skip 8                 # byte read from the probe pipe
+pipefds:    .skip 8                 # int[2] of pipe2()
+is_tty:     .skip 8                 # 1 = stdin is a TTY (interactive bash allowed)
 chbuf:      .skip 8
-lkc_have:   .skip 8
-lkc_desc:   .skip 8
-lkc_total:  .skip 8
-lkc_lolen:  .skip 8
-lkc_hilen:  .skip 8
-lkc_lo:     .skip 24
-lkc_hi:     .skip 24
-file_count: .skip 8
 ks_elen:    .skip 8
 ks_rawlen:  .skip 8
 ks_repls:   .skip 8
@@ -315,13 +358,11 @@ ks_reple:   .skip 8
 ks_inspos:  .skip 8
 ks_keyfound:.skip 8
 ks_taxfound:.skip 8
-tax_keys:   .skip 8*TAX_MAX         # pointer ke key  (di dalam confbuf)
-tax_vals:   .skip 8*TAX_MAX         # pointer ke value (di dalam confbuf)
+tax_keys:   .skip 8*TAX_MAX         # pointer to key   (inside confbuf)
+tax_vals:   .skip 8*TAX_MAX         # pointer to value (inside confbuf)
 tl_s:       .skip 8*32
 tl_e:       .skip 8*32
 exec_argv:  .skip 8*72
-fileptrs:   .skip 8*MAXFILES
-lineptrs:   .skip 8*LINEPTRS
 mode_key:   .skip 64
 curname:    .skip 128
 tsbuf:      .skip 32
@@ -339,8 +380,6 @@ rawbuf:     .skip CONFMAX+2
 newbuf:     .skip NEWMAX+16
 outbuf:     .skip OUTSZ
 tailbuf:    .skip TAILWIN
-dirbuf:     .skip DIRSZ
-filebuf:    .skip FILEMAX+1
 
 # =====================================================================
         .text
@@ -361,8 +400,8 @@ filebuf:    .skip FILEMAX+1
 .endm
 
 # ---------------------------------------------------------------------
-# write_all(edi=fd, rsi=buf, rdx=len) -> rax = 0 ok, -1 gagal
-# Menangani short write & EINTR; write()==0 dianggap error (tak loop abadi).
+# write_all(edi=fd, rsi=buf, rdx=len) -> rax = 0 ok, -1 failed
+# Handles short writes & EINTR; write()==0 is treated as an error (no endless loop).
 # CLOBBER: rax, rcx, rdx, rsi, rdi, r11
 # ---------------------------------------------------------------------
 write_all:
@@ -398,7 +437,7 @@ write_all:
         pop     rbx
         ret
 
-# strlen(rdi=cstr) -> rax.  Hanya utk string ber-NUL tepercaya.  CLOBBER: rax
+# strlen(rdi=cstr) -> rax.  Only for trusted NUL-terminated strings.  CLOBBER: rax
 strlen:
         xor     eax, eax
 .Lsl_l:
@@ -410,8 +449,8 @@ strlen:
         ret
 
 # ---------------------------------------------------------------------
-# bcopy_z(rdi=dst, rsi=src, rdx=limit) -> rax = dst baru, 0 jika overflow
-# Salin sampai NUL (NUL tidak ikut). Menulis hanya ke alamat < limit.
+# bcopy_z(rdi=dst, rsi=src, rdx=limit) -> rax = new dst, 0 on overflow
+# Copies up to the NUL (NUL not included). Writes only to addresses < limit.
 # CLOBBER: rax, rcx, rdi, rsi
 # ---------------------------------------------------------------------
 bcopy_z:
@@ -432,7 +471,7 @@ bcopy_z:
         xor     eax, eax
         ret
 
-# bcopy_n(rdi=dst, rsi=src, rcx=n) -> rax = dst baru, 0 jika melewati newbuf
+# bcopy_n(rdi=dst, rsi=src, rcx=n) -> rax = new dst, 0 if it would pass the end of newbuf
 # CLOBBER: rax, rcx, rdi, rsi
 bcopy_n:
         lea     rax, [rip+newbuf+NEWMAX]
@@ -446,7 +485,7 @@ bcopy_n:
         xor     eax, eax
         ret
 
-# getenv(rdi="NAMA=", rsi=envp) -> rax = ptr nilai / 0.  CLOBBER: rax, rcx, rsi, r8
+# getenv(rdi="NAME=", rsi=envp) -> rax = value ptr / 0.  CLOBBER: rax, rcx, rsi, r8
 getenv:
 .Lge_next:
         mov     r8, [rsi]
@@ -469,7 +508,7 @@ getenv:
         xor     eax, eax
         ret
 
-# streq(rdi, rsi) -> eax=1 sama / 0 beda.  CLOBBER: rax, rcx  (rdi,rsi utuh)
+# streq(rdi, rsi) -> eax=1 equal / 0 different.  CLOBBER: rax, rcx  (rdi,rsi preserved)
 streq:
         xor     ecx, ecx
 .Lse_l:
@@ -503,7 +542,7 @@ strcmp:
         sub     eax, edx
         ret
 
-# starts_with(rdi=str, rsi=prefix) -> eax=1/0, rcx = panjang prefix.  CLOBBER: rax, rcx
+# starts_with(rdi=str, rsi=prefix) -> eax=1/0, rcx = prefix length.  CLOBBER: rax, rcx
 starts_with:
         xor     ecx, ecx
 .Lsw_l:
@@ -521,7 +560,7 @@ starts_with:
         xor     eax, eax
         ret
 
-# skip_ws(rdi) -> rdi melewati spasi/tab.  CLOBBER: rdi, al
+# skip_ws(rdi) -> rdi advanced past spaces/tabs.  CLOBBER: rdi, al
 skip_ws:
 .Lsk_l:
         mov     al, [rdi]
@@ -535,7 +574,7 @@ skip_ws:
 .Lsk_d:
         ret
 
-# tax_lookup(rdi=key cstr) -> rax = ptr context / 0.  CLOBBER: rax, rcx, rsi, r8
+# tax_lookup(rdi=key cstr) -> rax = context ptr / 0.  CLOBBER: rax, rcx, rsi, r8
 tax_lookup:
         push    rbx
         xor     ebx, ebx
@@ -559,7 +598,7 @@ tax_lookup:
         pop     rbx
         ret
 
-# parse_int(rdi=cstr) -> rax (signed), maks 10 digit.  CLOBBER: rax, rcx, rdx, rdi, r8
+# parse_int(rdi=cstr) -> rax (signed), max 10 digits.  CLOBBER: rax, rcx, rdx, rdi, r8
 parse_int:
         xor     eax, eax
         xor     ecx, ecx
@@ -592,7 +631,7 @@ parse_int:
 .Lpi_ret:
         ret
 
-# write_dec(rdi=dst, rax=nilai, ecx=digit) -> rdi = dst+digit (zero-padded)
+# write_dec(rdi=dst, rax=value, ecx=digits) -> rdi = dst+digits (zero-padded)
 # CLOBBER: rax, rcx, rdx, r8, r10
 write_dec:
         add     rdi, rcx
@@ -609,8 +648,193 @@ write_dec:
         ret
 
 # ---------------------------------------------------------------------
-# fmt_time(rdi=dst[>=19 byte]) -> "YYYYMMDDTHHMMSS.mmm" (UTC), rdi=dst+19
-# Algoritma civil_from_days (H. Hinnant).  CLOBBER: rax, rcx, rdx, rsi, r8-r11
+# tz_load(): read the zone file ONCE into tzbuf and locate its tables.
+# Path: $TZ (":" prefix ignored; relative names live in /usr/share/zoneinfo/)
+# or /etc/localtime. Uses the v2+ (64-bit) block when present, else v1.
+# On any problem tz_ok stays 0 and times simply stay UTC.
+# CLOBBER: rax, rcx, rdx, rsi, rdi, r8-r11 (pbuf2 is used as scratch)
+# ---------------------------------------------------------------------
+tz_load:
+        push    rbx
+        mov     qword ptr [rip+tz_loaded], 1
+        mov     qword ptr [rip+tz_ok], 0
+        lea     rdi, [rip+s_tz_eq]
+        mov     rsi, [rip+envp_ptr]
+        call    getenv
+        test    rax, rax
+        jz      .Ltz_def
+        cmp     byte ptr [rax], ':'
+        jne     .Ltz_n1
+        inc     rax
+.Ltz_n1:
+        cmp     byte ptr [rax], 0
+        je      .Ltz_def
+        mov     rbx, rax
+        lea     rdi, [rip+pbuf2]
+        cmp     byte ptr [rax], '/'
+        je      .Ltz_cat
+        lea     rsi, [rip+s_zoneinfo]
+        lea     rdx, [rip+pbuf2+PATHMAX-1]
+        call    bcopy_z
+        test    rax, rax
+        jz      .Ltz_out
+        mov     rdi, rax
+.Ltz_cat:
+        mov     rsi, rbx
+        lea     rdx, [rip+pbuf2+PATHMAX-1]
+        call    bcopy_z
+        test    rax, rax
+        jz      .Ltz_out
+        mov     byte ptr [rax], 0
+        lea     rdi, [rip+pbuf2]
+        jmp     .Ltz_open
+.Ltz_def:
+        lea     rdi, [rip+s_localtime]
+.Ltz_open:
+        mov     eax, SYS_open
+        mov     esi, O_RDONLY|O_CLOEXEC
+        xor     edx, edx
+        syscall
+        test    rax, rax
+        js      .Ltz_out
+        mov     rbx, rax
+        xor     r8d, r8d
+.Ltz_rd:
+        mov     rdx, TZMAX
+        sub     rdx, r8
+        jz      .Ltz_cl
+        lea     rsi, [rip+tzbuf]
+        add     rsi, r8
+        xor     eax, eax
+        mov     rdi, rbx
+        syscall
+        cmp     rax, EINTR_NEG
+        je      .Ltz_rd
+        test    rax, rax
+        jle     .Ltz_cl
+        add     r8, rax
+        jmp     .Ltz_rd
+.Ltz_cl:
+        mov     eax, SYS_close
+        mov     rdi, rbx
+        syscall
+        cmp     r8, 44
+        jb      .Ltz_out
+        lea     rsi, [rip+tzbuf]
+        lea     rbx, [rsi+r8]                       # rbx = end of data
+        cmp     dword ptr [rsi], 0x66695a54         # "TZif"
+        jne     .Ltz_out
+        mov     r9d, 4                              # time size (v1)
+        cmp     byte ptr [rsi+4], 0
+        je      .Ltz_hdr
+        mov     eax, [rsi+32]                       # skip the v1 block
+        bswap   eax
+        lea     rdx, [rax+rax*4]                    # timecnt*5
+        mov     eax, [rsi+36]
+        bswap   eax
+        lea     rax, [rax+rax*2]
+        lea     rdx, [rdx+rax*2]                    # + typecnt*6
+        mov     eax, [rsi+40]
+        bswap   eax
+        add     rdx, rax                            # + charcnt
+        mov     eax, [rsi+28]
+        bswap   eax
+        lea     rdx, [rdx+rax*8]                    # + leapcnt*8
+        mov     eax, [rsi+24]
+        bswap   eax
+        add     rdx, rax                            # + isstdcnt
+        mov     eax, [rsi+20]
+        bswap   eax
+        add     rdx, rax                            # + isutcnt
+        lea     rsi, [rsi+rdx+44]                   # v2 header
+        mov     r9d, 8
+        lea     rax, [rsi+44]
+        cmp     rax, rbx
+        ja      .Ltz_out
+.Ltz_hdr:
+        mov     eax, [rsi+32]
+        bswap   eax
+        mov     r10, rax                            # timecnt
+        mov     eax, [rsi+36]
+        bswap   eax
+        mov     r11, rax                            # typecnt
+        test    r11, r11
+        jz      .Ltz_out
+        lea     rdi, [rsi+44]                       # transition times
+        mov     rax, r10
+        imul    rax, r9
+        add     rax, rdi                            # -> type indexes
+        mov     rcx, rax
+        add     rcx, r10                            # -> ttinfo records
+        lea     rdx, [r11+r11*2]
+        lea     rdx, [rcx+rdx*2]                    # end of the tables
+        cmp     rdx, rbx
+        ja      .Ltz_out
+        mov     [rip+tz_timecnt], r10
+        mov     [rip+tz_typecnt], r11
+        mov     [rip+tz_tsz], r9
+        mov     [rip+tz_times], rdi
+        mov     [rip+tz_idx], rax
+        mov     [rip+tz_tt], rcx
+        mov     qword ptr [rip+tz_ok], 1
+.Ltz_out:
+        pop     rbx
+        ret
+
+# ---------------------------------------------------------------------
+# tz_offset(rdi=epoch seconds) -> rax = local UTC offset in seconds
+# (0 when no zone data). Uses the last transition <= epoch; DST zones are
+# covered by the transitions stored in the file (fat tzdata, up to 2037).
+# CLOBBER: rax, rcx, rdx, rsi, rdi, r8-r11
+# ---------------------------------------------------------------------
+tz_offset:
+        cmp     qword ptr [rip+tz_loaded], 0
+        jne     .Lto_l
+        push    rdi
+        call    tz_load
+        pop     rdi
+.Lto_l:
+        cmp     qword ptr [rip+tz_ok], 0
+        je      .Lto_zero
+        mov     rsi, [rip+tz_times]
+        mov     rcx, [rip+tz_timecnt]
+        xor     edx, edx
+        xor     r8d, r8d                            # type before the first transition = 0
+.Lto_scan:
+        cmp     rdx, rcx
+        jae     .Lto_pick
+        cmp     qword ptr [rip+tz_tsz], 8
+        jne     .Lto_t4
+        mov     rax, [rsi+rdx*8]
+        bswap   rax
+        jmp     .Lto_cmp
+.Lto_t4:
+        mov     eax, [rsi+rdx*4]
+        bswap   eax
+        movsxd  rax, eax
+.Lto_cmp:
+        cmp     rax, rdi
+        jg      .Lto_pick
+        mov     r9, [rip+tz_idx]
+        movzx   r8d, byte ptr [r9+rdx]
+        inc     rdx
+        jmp     .Lto_scan
+.Lto_pick:
+        cmp     r8, [rip+tz_typecnt]
+        jae     .Lto_zero
+        mov     r9, [rip+tz_tt]
+        lea     r8, [r8+r8*2]
+        mov     eax, [r9+r8*2]
+        bswap   eax
+        movsxd  rax, eax
+        ret
+.Lto_zero:
+        xor     eax, eax
+        ret
+
+# ---------------------------------------------------------------------
+# fmt_time(rdi=dst[>=15 bytes]) -> "YYYYMMDDThhmmss" (ISO 8601 basic, LOCAL time), rdi=dst+15
+# Algorithm civil_from_days (H. Hinnant).  CLOBBER: rax, rcx, rdx, rsi, r8-r11
 # ---------------------------------------------------------------------
 fmt_time:
         push    rbx
@@ -629,17 +853,15 @@ fmt_time:
         mov     qword ptr [rsp], 0
         mov     qword ptr [rsp+8], 0
 .Lft_have:
-        mov     rbx, [rsp]                  # detik epoch (UTC)
-        mov     rax, [rsp+8]
-        xor     edx, edx
-        mov     rcx, 1000000
-        div     rcx
-        mov     r14, rax                    # milidetik
+        mov     rbx, [rsp]                  # epoch seconds (UTC), then shifted to local time
+        mov     rdi, rbx
+        call    tz_offset
+        add     rbx, rax
         mov     rax, rbx
         xor     edx, edx
         mov     rcx, 86400
         div     rcx
-        mov     r15, rdx                    # detik dlm hari
+        mov     r15, rdx                    # seconds within the day
         add     rax, 719468
         xor     edx, edx
         mov     rcx, 146097
@@ -739,11 +961,6 @@ fmt_time:
         mov     rax, r15
         mov     ecx, 2
         call    write_dec
-        mov     byte ptr [rdi], '.'
-        inc     rdi
-        mov     rax, r14
-        mov     ecx, 3
-        call    write_dec
         add     rsp, 16
         pop     r15
         pop     r14
@@ -753,7 +970,7 @@ fmt_time:
         ret
 
 # ---------------------------------------------------------------------
-# Buffer stdout (OUTSZ). Semua tampilan lewat sini, flush manual.
+# stdout buffer (OUTSZ). All output goes through here, flushed manually.
 # ---------------------------------------------------------------------
 # out_flush()   CLOBBER: rax, rcx, rdx, rsi, rdi, r11
 out_flush:
@@ -801,7 +1018,7 @@ out_bytes:
         pop     rbx
         ret
 
-# out_cstr(rdi=cstr)   CLOBBER: seperti out_bytes
+# out_cstr(rdi=cstr)   CLOBBER: same as out_bytes
 out_cstr:
         mov     rsi, rdi
         call    strlen
@@ -815,7 +1032,7 @@ out_ch:
         mov     edx, 1
         jmp     out_bytes
 
-# out_colored(rsi=ptr, rdx=len, ecx=indeks kolom 0..3)
+# out_colored(rsi=ptr, rdx=len, ecx=column index 0..3)
 out_colored:
         push    rbx
         push    r12
@@ -824,7 +1041,7 @@ out_colored:
         mov     r12, rdx
         lea     rax, [rip+color_sgr]
         mov     r13, [rax+rcx*8]
-        test    r12, r12                    # field kosong: tanpa kode warna
+        test    r12, r12                    # empty field: no color codes
         jnz     .Loc_nz
         xor     r13d, r13d
 .Loc_nz:
@@ -847,9 +1064,9 @@ out_colored:
         ret
 
 # ---------------------------------------------------------------------
-# print_row(rsi=baris, rdx=len): cetak baris CSV + '\n'. Jika warna aktif,
-# 3 kolom pertama (date,tags,context) dan sisanya (activity) diwarnai
-# sendiri-sendiri; koma di dalam tanda kutip tidak memecah kolom.
+# print_row(rsi=row, rdx=len): print a CSV row + '\n'. When color is on,
+# the first 3 columns (date,tags,context) and the rest (activity) are colored
+# separately; a comma inside double quotes does not split a column.
 # ---------------------------------------------------------------------
 print_row:
         push    rbx
@@ -923,9 +1140,9 @@ print_row:
         ret
 
 # ---------------------------------------------------------------------
-# csv_field(rdi=dst, rsi=src, rdx=limit, rcx=len) -> rax = dst baru / 0
-# RFC 4180: kutip jika ada , atau "; " digandakan; CR/LF -> spasi.
-# Margin: sebelum tiap byte sumber harus ada >= 3 byte kosong.
+# csv_field(rdi=dst, rsi=src, rdx=limit, rcx=len) -> rax = new dst / 0
+# RFC 4180: quoted only if it contains , or "; " is doubled; CR/LF -> space.
+# Margin: before every source byte there must be >= 3 free bytes.
 # CLOBBER: rax, rcx, rdi, rsi, r8-r11
 # ---------------------------------------------------------------------
 csv_field:
@@ -988,18 +1205,26 @@ csv_field:
         xor     eax, eax
         ret
 
+# csv_qfield(rdi=dst, rsi=src, rdx=limit, rcx=len) -> rax = new dst / 0
+# Same as csv_field but ALWAYS wraps the field in double quotes (string format),
+# even when it is empty ("").  CLOBBER: rax, rcx, rdi, rsi, r8-r11
+csv_qfield:
+        lea     r9, [rsi+rcx]
+        mov     r11d, 1
+        jmp     .Lcf_go
+
 # ---------------------------------------------------------------------
-# format_name(rdi=dst) -> rax = ptr ke NUL akhir / 0 jika overflow
-# Memperluas LK_NAME_FORMAT dari tsbuf (UTC) + LK_DEFAULT_FORMAT.
-# Token: YYYY MM DD HH mm ss. "MM" tepat setelah "HH" dianggap menit
-# (mendukung penulisan "HHMMss"). '/' diganti '_'. Selain itu literal.
+# format_name(rdi=dst) -> rax = ptr to the final NUL / 0 on overflow
+# Expands LK_NAME_FORMAT from tsbuf (local time) + LK_DEFAULT_FORMAT.
+# Tokens: YYYY MM DD HH hh mm ss. "MM" right after "HH"/"hh" counts as minutes
+# (allows writing "HHMMss"). '/' becomes '_'. Anything else is literal.
 # ---------------------------------------------------------------------
 format_name:
         push    rbx
         push    r12
         lea     rdx, [rip+pathbuf+PATHMAX-1]
         mov     rsi, [rip+name_fmt_ptr]
-        xor     r12d, r12d                  # flag: token sebelumnya HH
+        xor     r12d, r12d                  # flag: previous token was HH/hh
 .Lfn_loop:
         mov     al, [rsi]
         test    al, al
@@ -1007,7 +1232,7 @@ format_name:
         lea     r8, [rip+fn_tab]
         xor     r9d, r9d
 .Lfn_try:
-        cmp     r9d, 6
+        cmp     r9d, 7
         jae     .Lfn_lit
         xor     ecx, ecx
         movzx   r10d, byte ptr [r8+4]
@@ -1034,7 +1259,10 @@ format_name:
 .Lfn_nomm:
         xor     r12d, r12d
         cmp     r9d, 3
+        je      .Lfn_hh
+        cmp     r9d, 6                      # "hh" alias
         jne     .Lfn_adv
+.Lfn_hh:
         mov     r12d, 1
 .Lfn_adv:
         movzx   ecx, byte ptr [r8+4]
@@ -1092,9 +1320,9 @@ format_name:
         ret
 
 # ---------------------------------------------------------------------
-# ensure_open() -> rax 0 ok / -1.  Nama file dihitung PER ENTRI dari
-# LK_NAME_FORMAT; jika berubah (mis. lewat tengah malam UTC) fd lama
-# ditutup dan file baru dibuka. O_EXCL => hanya pembuat file menulis header.
+# ensure_open() -> rax 0 ok / -1.  The file name is computed PER ENTRY from
+# LK_NAME_FORMAT; if it changed (e.g. across local midnight) the old fd is
+# closed and the new file is opened. O_EXCL => only the creator writes the header.
 # CLOBBER: rax, rcx, rdx, rsi, rdi, r8-r11
 # ---------------------------------------------------------------------
 ensure_open:
@@ -1160,9 +1388,10 @@ ensure_open:
 
 # ---------------------------------------------------------------------
 # emit_entry(rdi=tags cstr, rsi=context cstr, rdx=activity ptr, rcx=len)
-#   -> rax 0 ok / -1 (pesan error sudah dicetak)
-# Satu baris CSV dibangun di entrybuf lalu ditulis dgn SATU write() pada
-# fd O_APPEND => tidak menyelip walau banyak shell menulis bersamaan.
+#   -> rax 0 ok / -1 (error message already printed)
+# One CSV line is built in entrybuf and written with ONE write() on the
+# O_APPEND fd => lines never interleave even when many shells write at once.
+# Line format:  YYYYMMDDThhmmss,lktags,"lkcontext","log activity"
 # ---------------------------------------------------------------------
 emit_entry:
         push    rbx
@@ -1181,12 +1410,12 @@ emit_entry:
         jnz     .Lee_eopen
         lea     rdi, [rip+entrybuf]
         lea     rsi, [rip+tsbuf]
-        mov     ecx, 19
+        mov     ecx, 15                     # YYYYMMDDThhmmss
         rep movsb
         mov     byte ptr [rdi], ','
         inc     rdi
         mov     rbx, rdi
-        mov     rdi, r12                    # --- tags
+        mov     rdi, r12                    # --- tags (quoted only if needed)
         call    strlen
         mov     rcx, rax
         mov     rdi, rbx
@@ -1199,22 +1428,22 @@ emit_entry:
         mov     byte ptr [rdi], ','
         inc     rdi
         mov     rbx, rdi
-        mov     rdi, r13                    # --- context
+        mov     rdi, r13                    # --- context (always a quoted string)
         call    strlen
         mov     rcx, rax
         mov     rdi, rbx
         mov     rsi, r13
         lea     rdx, [rip+entrybuf+ENTRYMAX-2]
-        call    csv_field
+        call    csv_qfield
         test    rax, rax
         jz      .Lee_ebig
         mov     rdi, rax
         mov     byte ptr [rdi], ','
         inc     rdi
-        mov     rsi, r14                    # --- activity
+        mov     rsi, r14                    # --- activity (always a quoted string)
         mov     rcx, r15
         lea     rdx, [rip+entrybuf+ENTRYMAX-2]
-        call    csv_field
+        call    csv_qfield
         test    rax, rax
         jz      .Lee_ebig
         mov     byte ptr [rax], 10
@@ -1247,8 +1476,8 @@ emit_entry:
         ret
 
 # ---------------------------------------------------------------------
-# parse_config(): parse confbuf (ber-NUL) IN-PLACE (key/value = pointer ke
-# dalam confbuf, tanpa salin). [section], key="value", komentar # ;, CRLF.
+# parse_config(): parse confbuf (NUL-terminated) IN-PLACE (key/value = pointers
+# into confbuf, no copying). [section], key="value", comments # ;, CRLF.
 # ---------------------------------------------------------------------
 parse_config:
         push    rbx
@@ -1373,7 +1602,7 @@ parse_config:
         mov     [rip+tax_count], rax
         jmp     .Lpc_next
 .Lpc_setting:
-        mov     r9, rsi                     # nilai
+        mov     r9, rsi                     # value
         lea     r10, [rip+setting_tab]
 .Lpc_sl:
         mov     rsi, [r10]
@@ -1423,7 +1652,7 @@ parse_config:
         pop     rbx
         ret
 
-# lookup_color(rdi=nama) -> rax = string SGR / 0.  CLOBBER: rax, rcx, rsi, r8
+# lookup_color(rdi=name) -> rax = SGR string / 0.  CLOBBER: rax, rcx, rsi, r8
 lookup_color:
         lea     r8, [rip+color_tab]
 .Llc_l:
@@ -1443,7 +1672,7 @@ lookup_color:
         ret
 
 # ---------------------------------------------------------------------
-# validate_settings(): isi default utk key yg hilang/tidak valid.
+# validate_settings(): fill in defaults for missing/invalid keys.
 # ---------------------------------------------------------------------
 validate_settings:
         mov     rdi, [rip+name_fmt_ptr]
@@ -1525,7 +1754,7 @@ validate_settings:
         ret
 
 # ---------------------------------------------------------------------
-# read_conf_raw(rdi=dst[CONFMAX+1]) -> rax = panjang (NUL-terminated) / -1
+# read_conf_raw(rdi=dst[CONFMAX+1]) -> rax = length (NUL-terminated) / -1
 # ---------------------------------------------------------------------
 read_conf_raw:
         push    rbx
@@ -1571,7 +1800,7 @@ read_conf_raw:
         pop     rbx
         ret
 
-# load_config(): baca lk.conf ke confbuf; kosong/tidak ada => default_conf
+# load_config(): read lk.conf into confbuf; empty/missing => default_conf
 load_config:
         lea     rdi, [rip+confbuf]
         call    read_conf_raw
@@ -1616,8 +1845,8 @@ build_conf_path:
         DIE     m_dirlong, m_dirlong_len, 1
 
 # ---------------------------------------------------------------------
-# build_dir(): ekspansi LK_DIR ("$HOME"/"~" di awal) ke pathbuf, pastikan
-# absolut & berakhir '/', simpan panjang di dir_len.
+# build_dir(): expand LK_DIR (leading "$HOME"/"~") into pathbuf, make sure it is
+# absolute & ends with '/', store its length in dir_len.
 # ---------------------------------------------------------------------
 build_dir:
         push    rbx
@@ -1692,8 +1921,8 @@ build_dir:
 .Lbd_rel:
         DIE     m_dirrel, m_dirrel_len, 1
 
-# mkdir_p(rdi=buf, rsi=len): mkdir -p (mode 0700) utk semua '/' di indeks 1..len-1.
-# Error diabaikan (kegagalan nyata muncul saat open()).  CLOBBER: rax, rcx, rdx, rsi, rdi, r8-r11
+# mkdir_p(rdi=buf, rsi=len): mkdir -p (mode 0700) for every '/' at index 1..len-1.
+# Errors are ignored (real failures show up in open()).  CLOBBER: rax, rcx, rdx, rsi, rdi, r8-r11
 mkdir_p:
         mov     r10, rdi
         mov     r9, rsi
@@ -1715,7 +1944,7 @@ mkdir_p:
 .Lmk_d:
         ret
 
-# init_config(): (re)load seluruh konfigurasi. Aman dipanggil ulang saat reload.
+# init_config(): (re)load the whole configuration. Safe to call again on reload.
 init_config:
         mov     qword ptr [rip+tax_count], 0
         mov     qword ptr [rip+dir_ptr], 0
@@ -1738,9 +1967,9 @@ init_config:
         ret
 
 # ---------------------------------------------------------------------
-# show_tail(edi=1 => cetak "logged into <file>" dulu)
-# Tampilkan LK_TAIL_LINES baris terakhir file log aktif (jendela baca
-# TAILWIN dari akhir file). Baris terbaru diberi "[>] ".
+# show_tail(edi=1 => print "logged into <file>" first)
+# Show the last LK_TAIL_LINES lines of the active log file (read window
+# TAILWIN from the end of the file). The newest line is prefixed with "[>] ".
 # ---------------------------------------------------------------------
 show_tail:
         push    rbx
@@ -1817,7 +2046,7 @@ show_tail:
         mov     eax, SYS_close
         mov     rdi, rbx
         syscall
-        xor     r10d, r10d                  # p0 = awal baris lengkap pertama
+        xor     r10d, r10d                  # p0 = start of the first complete line
         lea     rsi, [rip+tailbuf]
         test    r13, r13
         jz      .Lst_p0ok
@@ -1913,7 +2142,7 @@ show_tail:
 
 # ---------------------------------------------------------------------
 # spawn_wait(): fork + execve("/bin/sh", exec_argv) + wait4.
-# Hasil di last_status (kode exit, atau 128+sinyal). stdout di-flush dulu.
+# Result in last_status (exit code, or 128+signal). stdout is flushed first.
 # ---------------------------------------------------------------------
 spawn_wait:
         call    out_flush
@@ -1959,7 +2188,7 @@ spawn_wait:
         mov     qword ptr [rip+last_status], 1
         ret
 
-# run_shell_line(rdi=baris cstr): sh -c "<baris>"  (pipe, redirect, dll. jalan)
+# run_shell_line(rdi=line cstr): sh -c "<line>"  (fallback when bash is unavailable)
 run_shell_line:
         lea     rax, [rip+exec_argv]
         lea     rcx, [rip+s_sh_name]
@@ -1970,7 +2199,7 @@ run_shell_line:
         mov     qword ptr [rax+24], 0
         jmp     spawn_wait
 
-# run_cli(): sh -c 'exec "$@"' lk <argv[1..]>  (kutip argumen asli tetap utuh)
+# run_cli(): sh -c 'exec "$@"' lk <argv[1..]>  (original argument quoting stays intact)
 run_cli:
         mov     rcx, [rip+argc]
         cmp     rcx, 65
@@ -2001,7 +2230,127 @@ run_cli:
         mov     qword ptr [rip+last_status], 2
         ret
 
-# do_cd(rdi=argumen cstr): builtin cd. kosong/"~" => $HOME, "~/x" => $HOME/x
+# ---------------------------------------------------------------------
+# probe_start(rdi=line cstr) -> rax = 1 the first word is a command/alias/
+#   builtin/function (the line is NOW running), 0 plain text (nothing runs),
+#   2 bash unavailable or fork/pipe failed (nothing runs).
+# Starts  bash [-i] -c <s_probe_script> lk <line>  with a pipe on fd 3 and
+# blocks until the script reports. The caller logs the entry right after
+# this returns (while the command already runs) and then MUST call
+# probe_finish() to reap the child.  "-i" (so ~/.bashrc aliases load) is
+# only used when stdin is a TTY.
+# CLOBBER: rax, rcx, rdx, rsi, rdi, r8-r11
+# ---------------------------------------------------------------------
+probe_start:
+        push    rbx
+        push    r12
+        mov     r12, rdi
+        call    out_flush
+        mov     eax, SYS_pipe2
+        lea     rdi, [rip+pipefds]
+        mov     esi, O_CLOEXEC
+        syscall
+        test    rax, rax
+        js      .Lpb_fail
+        lea     rdx, [rip+exec_argv]                # argv = bash [-i] -c script lk line
+        lea     rax, [rip+s_bash_name]
+        mov     [rdx], rax
+        mov     ecx, 1
+        cmp     qword ptr [rip+is_tty], 0
+        je      .Lpb_noi
+        lea     rax, [rip+s_dash_i]
+        mov     [rdx+rcx*8], rax
+        inc     ecx
+.Lpb_noi:
+        lea     rax, [rip+s_dash_c]
+        mov     [rdx+rcx*8], rax
+        inc     ecx
+        lea     rax, [rip+s_probe_script]
+        mov     [rdx+rcx*8], rax
+        inc     ecx
+        lea     rax, [rip+s_lk]
+        mov     [rdx+rcx*8], rax
+        inc     ecx
+        mov     [rdx+rcx*8], r12
+        inc     ecx
+        mov     qword ptr [rdx+rcx*8], 0
+        mov     eax, SYS_fork
+        syscall
+        test    rax, rax
+        js      .Lpb_ferr
+        jz      .Lpb_child
+        mov     [rip+probe_pid], rax
+        mov     eax, SYS_close                      # parent: drop the write end
+        mov     edi, [rip+pipefds+4]
+        syscall
+        mov     qword ptr [rip+probe_res], 0
+.Lpb_rd:
+        xor     eax, eax                            # read 1 byte of the verdict
+        mov     edi, [rip+pipefds]
+        lea     rsi, [rip+probe_res]
+        mov     edx, 1
+        syscall
+        cmp     rax, EINTR_NEG
+        je      .Lpb_rd
+        mov     ebx, 2                              # default: no verdict (EOF/error)
+        cmp     rax, 1
+        jne     .Lpb_closer
+        movzx   eax, byte ptr [rip+probe_res]
+        cmp     al, '1'
+        jne     .Lpb_n1
+        mov     ebx, 1
+        jmp     .Lpb_closer
+.Lpb_n1:
+        cmp     al, '0'
+        jne     .Lpb_closer
+        xor     ebx, ebx
+.Lpb_closer:
+        mov     eax, SYS_close
+        mov     edi, [rip+pipefds]
+        syscall
+        mov     rax, rbx
+        pop     r12
+        pop     rbx
+        ret
+.Lpb_child:
+        mov     eax, SYS_dup2                       # pipe write end -> fd 3
+        mov     edi, [rip+pipefds+4]
+        mov     esi, 3
+        syscall
+        lea     rdi, [rip+s_bash_path]
+        lea     rsi, [rip+exec_argv]
+        mov     rdx, [rip+envp_ptr]
+        mov     eax, SYS_execve
+        syscall
+        mov     edi, 127
+        mov     eax, SYS_exit
+        syscall
+.Lpb_ferr:
+        mov     eax, SYS_close
+        mov     edi, [rip+pipefds]
+        syscall
+        mov     eax, SYS_close
+        mov     edi, [rip+pipefds+4]
+        syscall
+.Lpb_fail:
+        mov     qword ptr [rip+probe_pid], 0
+        mov     eax, 2
+        pop     r12
+        pop     rbx
+        ret
+
+# probe_finish(): wait4 on the probe child -> last_status (same encoding as
+# spawn_wait). No-op when there is no child.  CLOBBER: rax, rcx, rdx, rsi, rdi, r10, r11
+probe_finish:
+        mov     rdi, [rip+probe_pid]
+        test    rdi, rdi
+        jz      .Lpf_ret
+        mov     qword ptr [rip+probe_pid], 0
+        jmp     .Lsw2_w                             # reuse spawn_wait's wait loop
+.Lpf_ret:
+        ret
+
+# do_cd(rdi=argument cstr): builtin cd. empty/"~" => $HOME, "~/x" => $HOME/x
 do_cd:
         push    rbx
         mov     rbx, rdi
@@ -2045,448 +2394,12 @@ do_cd:
         ret
 
 # ---------------------------------------------------------------------
-# row_match(rdi=baris) -> eax 1/0.  Cocok jika lo <= ts(prefix) dan ts <= hi.
-# CLOBBER: rax, rcx, rsi, rdi, r8
+# lkc (log reader) lives in its own module: src/modules/lkc.asm
 # ---------------------------------------------------------------------
-row_match:
-        cmp     qword ptr [rip+lkc_have], 0
-        je      .Lrm_yes
-        mov     r8, rdi
-        mov     rsi, r8
-        lea     rdi, [rip+lkc_lo]
-        mov     rcx, [rip+lkc_lolen]
-        repe cmpsb
-        jb      .Lrm_no
-        mov     rsi, r8
-        lea     rdi, [rip+lkc_hi]
-        mov     rcx, [rip+lkc_hilen]
-        repe cmpsb
-        ja      .Lrm_no
-.Lrm_yes:
-        mov     eax, 1
-        ret
-.Lrm_no:
-        xor     eax, eax
-        ret
-
-# parse_spec(rdi=token) -> rax 0 ok / 1 salah.  "a" atau "a-b", [0-9T], tiap sisi 1..19
-# CLOBBER: rax, rcx, rdx, rsi, rdi, r8-r11
-parse_spec:
-        mov     r10, rdi
-        xor     ecx, ecx
-        mov     r8, -1
-.Lps_l:
-        mov     al, [r10+rcx]
-        test    al, al
-        jz      .Lps_end
-        cmp     al, '-'
-        jne     .Lps_nd
-        cmp     r8, -1
-        jne     .Lps_bad
-        mov     r8, rcx
-        jmp     .Lps_n
-.Lps_nd:
-        cmp     al, 'T'
-        je      .Lps_n
-        cmp     al, '0'
-        jb      .Lps_bad
-        cmp     al, '9'
-        ja      .Lps_bad
-.Lps_n:
-        inc     rcx
-        cmp     rcx, 64
-        ja      .Lps_bad
-        jmp     .Lps_l
-.Lps_end:
-        mov     r11, r10
-        mov     r9, rcx
-        mov     rax, r10
-        mov     rdx, rcx
-        cmp     r8, -1
-        je      .Lps_have
-        mov     r9, r8
-        lea     rax, [r10+r8+1]
-        mov     rdx, rcx
-        sub     rdx, r8
-        dec     rdx
-.Lps_have:
-        test    r9, r9
-        jz      .Lps_bad
-        cmp     r9, 19
-        ja      .Lps_bad
-        test    rdx, rdx
-        jz      .Lps_bad
-        cmp     rdx, 19
-        ja      .Lps_bad
-        mov     [rip+lkc_lolen], r9
-        mov     [rip+lkc_hilen], rdx
-        mov     rsi, r11
-        lea     rdi, [rip+lkc_lo]
-        mov     rcx, r9
-        rep movsb
-        mov     byte ptr [rdi], 0
-        mov     rsi, rax
-        lea     rdi, [rip+lkc_hi]
-        mov     rcx, rdx
-        rep movsb
-        mov     byte ptr [rdi], 0
-        xor     eax, eax
-        ret
-.Lps_bad:
-        mov     eax, 1
-        ret
-
-# list_dir(): isi fileptrs/file_count dgn file *LK_DEFAULT_FORMAT di folder log, urut nama.
-# -> rax 0 ok / -1
-list_dir:
-        push    rbx
-        push    r12
-        push    r13
-        push    r14
-        push    r15
-        mov     qword ptr [rip+file_count], 0
-        lea     rdi, [rip+pbuf2]
-        lea     rsi, [rip+pathbuf]
-        mov     rcx, [rip+dir_len]
-        rep movsb
-        mov     byte ptr [rdi], 0
-        mov     eax, SYS_open
-        lea     rdi, [rip+pbuf2]
-        mov     esi, O_RDONLY|O_DIRECTORY|O_CLOEXEC
-        xor     edx, edx
-        syscall
-        test    rax, rax
-        js      .Lld2_fail
-        mov     rbx, rax
-        xor     r12d, r12d
-.Lld2_read:
-        mov     rdx, DIRSZ
-        sub     rdx, r12
-        cmp     rdx, 1024
-        jb      .Lld2_done
-        mov     eax, SYS_getdents64
-        mov     rdi, rbx
-        lea     rsi, [rip+dirbuf]
-        add     rsi, r12
-        syscall
-        cmp     rax, EINTR_NEG
-        je      .Lld2_read
-        test    rax, rax
-        jle     .Lld2_done
-        lea     r14, [rip+dirbuf]
-        add     r14, r12
-        add     r12, rax
-.Lld2_ent:
-        lea     rax, [rip+dirbuf]
-        add     rax, r12
-        cmp     r14, rax
-        jae     .Lld2_read
-        movzx   ecx, word ptr [r14+16]
-        test    ecx, ecx
-        jz      .Lld2_done
-        lea     r15, [r14+19]
-        movzx   edx, byte ptr [r14+18]
-        add     r14, rcx
-        cmp     dl, 8
-        je      .Lld2_chk
-        test    dl, dl
-        jnz     .Lld2_ent
-.Lld2_chk:
-        mov     rdi, r15
-        call    strlen
-        mov     r8, rax
-        mov     rdi, [rip+ext_ptr]
-        call    strlen
-        mov     r9, rax
-        cmp     r8, r9
-        jbe     .Lld2_ent
-        lea     rdi, [r15+r8]
-        sub     rdi, r9
-        mov     rsi, [rip+ext_ptr]
-        call    streq
-        test    eax, eax
-        jz      .Lld2_ent
-        mov     rax, [rip+file_count]
-        cmp     rax, MAXFILES
-        jae     .Lld2_ent
-        lea     rcx, [rip+fileptrs]
-        mov     [rcx+rax*8], r15
-        inc     rax
-        mov     [rip+file_count], rax
-        jmp     .Lld2_ent
-.Lld2_done:
-        mov     eax, SYS_close
-        mov     rdi, rbx
-        syscall
-        lea     r8, [rip+fileptrs]
-        mov     r9, [rip+file_count]
-        mov     r10d, 1
-.Lso_i:
-        cmp     r10, r9
-        jae     .Lso_done
-        mov     r11, [r8+r10*8]
-        mov     rbx, r10
-.Lso_j:
-        test    rbx, rbx
-        jz      .Lso_ins
-        mov     rdi, [r8+rbx*8-8]
-        mov     rsi, r11
-        call    strcmp
-        test    eax, eax
-        jle     .Lso_ins
-        mov     rax, [r8+rbx*8-8]
-        mov     [r8+rbx*8], rax
-        dec     rbx
-        jmp     .Lso_j
-.Lso_ins:
-        mov     [r8+rbx*8], r11
-        inc     r10
-        jmp     .Lso_i
-.Lso_done:
-        xor     eax, eax
-        jmp     .Lld2_out
-.Lld2_fail:
-        mov     rax, -1
-.Lld2_out:
-        pop     r15
-        pop     r14
-        pop     r13
-        pop     r12
-        pop     rbx
-        ret
-
-# lkc_one_file(rdi=nama file): baca, saring, cetak. Menambah lkc_total.
-lkc_one_file:
-        push    rbx
-        push    r12
-        push    r13
-        push    r14
-        push    r15
-        mov     r15, rdi
-        lea     rdi, [rip+pbuf2]
-        lea     rsi, [rip+pathbuf]
-        mov     rcx, [rip+dir_len]
-        rep movsb
-        mov     rsi, r15
-        lea     rdx, [rip+pbuf2+PATHMAX-1]
-        call    bcopy_z
-        test    rax, rax
-        jz      .Lof2_ret
-        mov     byte ptr [rax], 0
-        mov     eax, SYS_open
-        lea     rdi, [rip+pbuf2]
-        mov     esi, O_RDONLY|O_CLOEXEC|O_NOFOLLOW
-        xor     edx, edx
-        syscall
-        test    rax, rax
-        js      .Lof2_ret
-        mov     rbx, rax
-        xor     r12d, r12d
-.Lof2_rd:
-        mov     rdx, FILEMAX
-        sub     rdx, r12
-        jz      .Lof2_rdd
-        lea     rsi, [rip+filebuf]
-        add     rsi, r12
-        xor     eax, eax
-        mov     rdi, rbx
-        syscall
-        cmp     rax, EINTR_NEG
-        je      .Lof2_rd
-        test    rax, rax
-        jle     .Lof2_rdd
-        add     r12, rax
-        jmp     .Lof2_rd
-.Lof2_rdd:
-        mov     eax, SYS_close
-        mov     rdi, rbx
-        syscall
-        lea     rax, [rip+filebuf]
-        mov     byte ptr [rax+r12], 0
-        lea     rbx, [rip+filebuf]
-        lea     r13, [rbx+r12]
-        xor     r14d, r14d
-.Lof2_ln:
-        cmp     rbx, r13
-        jae     .Lof2_lnd
-        mov     r15, rbx
-.Lof2_f:
-        cmp     rbx, r13
-        jae     .Lof2_e
-        cmp     byte ptr [rbx], 10
-        je      .Lof2_e
-        inc     rbx
-        jmp     .Lof2_f
-.Lof2_e:
-        mov     byte ptr [rbx], 0
-        mov     r9, rbx
-        inc     rbx
-        cmp     r9, r15
-        jbe     .Lof2_ln
-        cmp     byte ptr [r9-1], 13
-        jne     .Lof2_cr
-        mov     byte ptr [r9-1], 0
-.Lof2_cr:
-        movzx   eax, byte ptr [r15]
-        sub     eax, '0'
-        cmp     eax, 9
-        ja      .Lof2_ln
-        mov     rdi, r15
-        call    row_match
-        test    eax, eax
-        jz      .Lof2_ln
-        cmp     r14, LINEPTRS
-        jae     .Lof2_ln
-        lea     rax, [rip+lineptrs]
-        mov     [rax+r14*8], r15
-        inc     r14
-        jmp     .Lof2_ln
-.Lof2_lnd:
-        test    r14, r14
-        jz      .Lof2_ret
-        add     [rip+lkc_total], r14
-        lea     rdi, [rip+s_lbl_file]
-        call    out_cstr
-        lea     rdi, [rip+pbuf2]
-        call    out_cstr
-        mov     edi, 10
-        call    out_ch
-        lea     rsi, [rip+s_header]
-        mov     edx, s_header_len
-        call    out_bytes
-        xor     r12d, r12d
-.Lof2_pr:
-        cmp     r12, r14
-        jae     .Lof2_ret
-        mov     rax, r12
-        cmp     qword ptr [rip+lkc_desc], 0
-        je      .Lof2_pi
-        mov     rax, r14
-        dec     rax
-        sub     rax, r12
-.Lof2_pi:
-        lea     rcx, [rip+lineptrs]
-        mov     rsi, [rcx+rax*8]
-        mov     rdi, rsi
-        call    strlen
-        mov     rdx, rax
-        call    print_row
-        inc     r12
-        jmp     .Lof2_pr
-.Lof2_ret:
-        pop     r15
-        pop     r14
-        pop     r13
-        pop     r12
-        pop     rbx
-        ret
+        .include "modules/lkc.asm"
 
 # ---------------------------------------------------------------------
-# cmd_lkc(rdi=argumen cstr, boleh ditulis): lkc [filter] [asc|desc]
-# Tanpa filter = semua baris dari semua file. Urutan file = nama file
-# (asc) atau kebalikannya (desc); baris di dalam file mengikuti urutan itu.
-# ---------------------------------------------------------------------
-cmd_lkc:
-        push    rbx
-        push    r12
-        push    r13
-        push    r14
-        push    r15
-        mov     rbx, rdi
-        mov     qword ptr [rip+lkc_have], 0
-        mov     qword ptr [rip+lkc_desc], 0
-        mov     qword ptr [rip+lkc_total], 0
-.Lkc_tok:
-        mov     rdi, rbx
-        call    skip_ws
-        mov     rbx, rdi
-        cmp     byte ptr [rbx], 0
-        je      .Lkc_run
-        mov     r12, rbx
-.Lkc_te:
-        mov     al, [rbx]
-        test    al, al
-        jz      .Lkc_tend
-        cmp     al, ' '
-        je      .Lkc_tend
-        cmp     al, 9
-        je      .Lkc_tend
-        inc     rbx
-        jmp     .Lkc_te
-.Lkc_tend:
-        cmp     byte ptr [rbx], 0
-        je      .Lkc_nonul
-        mov     byte ptr [rbx], 0
-        inc     rbx
-.Lkc_nonul:
-        mov     rdi, r12
-        lea     rsi, [rip+s_asc]
-        call    streq
-        test    eax, eax
-        jz      .Lkc_t1
-        mov     qword ptr [rip+lkc_desc], 0
-        jmp     .Lkc_tok
-.Lkc_t1:
-        mov     rdi, r12
-        lea     rsi, [rip+s_desc]
-        call    streq
-        test    eax, eax
-        jz      .Lkc_t2
-        mov     qword ptr [rip+lkc_desc], 1
-        jmp     .Lkc_tok
-.Lkc_t2:
-        cmp     qword ptr [rip+lkc_have], 0
-        jne     .Lkc_usage
-        mov     rdi, r12
-        call    parse_spec
-        test    rax, rax
-        jnz     .Lkc_usage
-        mov     qword ptr [rip+lkc_have], 1
-        jmp     .Lkc_tok
-.Lkc_run:
-        call    list_dir
-        test    rax, rax
-        jnz     .Lkc_nodir
-        mov     r13, [rip+file_count]
-        xor     r12d, r12d
-.Lkc_file:
-        cmp     r12, r13
-        jae     .Lkc_end
-        mov     rax, r12
-        cmp     qword ptr [rip+lkc_desc], 0
-        je      .Lkc_idx
-        mov     rax, r13
-        dec     rax
-        sub     rax, r12
-.Lkc_idx:
-        lea     rcx, [rip+fileptrs]
-        mov     rdi, [rcx+rax*8]
-        inc     r12
-        call    lkc_one_file
-        jmp     .Lkc_file
-.Lkc_end:
-        cmp     qword ptr [rip+lkc_total], 0
-        jne     .Lkc_flush
-        lea     rdi, [rip+s_noentries]
-        call    out_cstr
-.Lkc_flush:
-        call    out_flush
-        jmp     .Lkc_ret
-.Lkc_nodir:
-        ERR     m_nodir, m_nodir_len
-        jmp     .Lkc_ret
-.Lkc_usage:
-        ERR     m_lkc_usage, m_lkc_usage_len
-.Lkc_ret:
-        pop     r15
-        pop     r14
-        pop     r13
-        pop     r12
-        pop     rbx
-        ret
-
-# ---------------------------------------------------------------------
-# is_tax_hdr(rdi=awal(setelah spasi), rsi=akhir baris) -> eax 1 jika "[taxonomy]"
+# is_tax_hdr(rdi=start (after spaces), rsi=end of line) -> eax 1 if "[taxonomy]"
 # CLOBBER: rax, rdx, rdi
 # ---------------------------------------------------------------------
 is_tax_hdr:
@@ -2522,7 +2435,7 @@ is_tax_hdr:
         xor     eax, eax
         ret
 
-# line_key_match(rdi=awal, rsi=akhir baris, rdx=key cstr) -> eax: "key[ws]=" di awal baris
+# line_key_match(rdi=start, rsi=end of line, rdx=key cstr) -> eax: "key[ws]=" at line start
 # CLOBBER: rax, rdx, rdi
 line_key_match:
 .Lkm_l:
@@ -2556,7 +2469,7 @@ line_key_match:
         xor     eax, eax
         ret
 
-# keychar_ok(dil) -> eax 1 jika [A-Za-z0-9_-].  CLOBBER: eax
+# keychar_ok(dil) -> eax 1 if [A-Za-z0-9_-].  CLOBBER: eax
 keychar_ok:
         movzx   eax, dil
         cmp     al, '-'
@@ -2584,7 +2497,7 @@ keychar_ok:
 
 # ---------------------------------------------------------------------
 # cmd_lkset(rdi=argumen cstr, boleh ditulis): "taxonomy key="Value""
-# Tulis ulang lk.conf (file sementara + rename atomik), lalu RELOAD config.
+# Rewrite lk.conf (temp file + atomic rename), then RELOAD the config.
 # ---------------------------------------------------------------------
 cmd_lkset:
         push    rbx
@@ -2608,7 +2521,7 @@ cmd_lkset:
         mov     rdi, rbx
         call    skip_ws
         mov     rbx, rdi
-        mov     r12, rbx                    # awal key
+        mov     r12, rbx                    # start of key
 .Lls_k:
         mov     al, [rbx]
         test    al, al
@@ -2636,7 +2549,7 @@ cmd_lkset:
         jne     .Lls_v1
         inc     rbx
 .Lls_v1:
-        mov     r14, rbx                    # awal value
+        mov     r14, rbx                    # start of value
         mov     rdi, rbx
         call    strlen
         lea     r15, [rbx+rax]
@@ -2691,7 +2604,7 @@ cmd_lkset:
         inc     rsi
         jmp     .Lls_rs
 .Lls_build:
-        # entri baru:  key="value"\n  di entrybuf
+        # new entry:  key="value"\n  in entrybuf
         lea     rdi, [rip+entrybuf]
         mov     rsi, r12
         lea     rdx, [rip+entrybuf+ENTRYMAX-8]
@@ -2709,7 +2622,7 @@ cmd_lkset:
         lea     rax, [rip+entrybuf]
         sub     rdi, rax
         mov     [rip+ks_elen], rdi
-        # baca config mentah (atau default)
+        # read the raw config (or the default)
         lea     rdi, [rip+rawbuf]
         call    read_conf_raw
         test    rax, rax
@@ -2724,7 +2637,7 @@ cmd_lkset:
 .Lls_have:
         mov     [rip+ks_rawlen], rax
         lea     r13, [rip+rawbuf]
-        add     r13, rax                    # akhir raw
+        add     r13, rax                    # end of raw
         lea     rbx, [rip+rawbuf]
         xor     r14d, r14d                  # in_tax
         mov     qword ptr [rip+ks_keyfound], 0
@@ -2733,7 +2646,7 @@ cmd_lkset:
 .Lls_sc:
         cmp     rbx, r13
         jae     .Lls_sc_done
-        mov     r8, rbx                     # awal baris
+        mov     r8, rbx                     # start of line
         mov     rsi, rbx
 .Lls_se:
         cmp     rsi, r13
@@ -2743,13 +2656,13 @@ cmd_lkset:
         inc     rsi
         jmp     .Lls_se
 .Lls_see:
-        mov     r9, rsi                     # akhir baris
+        mov     r9, rsi                     # end of line
         lea     r10, [rsi+1]
         cmp     rsi, r13
         jb      .Lls_sn
         mov     r10, rsi
 .Lls_sn:
-        mov     rbx, r10                    # baris berikutnya
+        mov     rbx, r10                    # next line
         mov     rsi, r8
 .Lls_ts:
         cmp     rsi, r9
@@ -2803,7 +2716,7 @@ cmd_lkset:
         jne     .Lls_caseA
         cmp     qword ptr [rip+ks_taxfound], 0
         jne     .Lls_caseB
-        # --- C: tidak ada [taxonomy]
+        # --- C: no [taxonomy] section
         lea     rsi, [rip+rawbuf]
         mov     rcx, [rip+ks_rawlen]
         call    bcopy_n
@@ -2892,7 +2805,7 @@ cmd_lkset:
 .Lls_write:
         lea     rax, [rip+newbuf]
         sub     rdi, rax
-        mov     r13, rdi                    # panjang config baru
+        mov     r13, rdi                    # length of the new config
         cmp     r13, CONFMAX
         ja      .Lls_big
         lea     rdi, [rip+confpath]
@@ -3009,8 +2922,8 @@ getc:
         mov     eax, -1
         ret
 
-# read_line() -> rax = panjang (linebuf NUL-terminated) / -1 EOF.
-# Baris > LINEMAX: kelebihan dibuang, tidak pernah menulis di luar linebuf.
+# read_line() -> rax = length (linebuf NUL-terminated) / -1 EOF.
+# Lines > LINEMAX: the excess is dropped, nothing is ever written outside linebuf.
 read_line:
         push    rbx
         xor     ebx, ebx
@@ -3050,13 +2963,13 @@ read_line:
         ret
 
 # ---------------------------------------------------------------------
-# handle_line(rdi=baris NUL-terminated & ter-trim, rsi=len>0) -> eax=1 bila
-# loop interaktif harus berhenti.  Dipakai juga oleh mode CLI (cli_flag=1).
+# handle_line(rdi=line NUL-terminated & trimmed, rsi=len>0) -> eax=1 when the
+# interactive loop must stop.  Also used by CLI mode (cli_flag=1).
 #
-# Urutan klasifikasi token pertama (kind):
-#   1 exit/quit   2 "lk" sendiri   3 lkc   4 lkset   6 cd (builtin)
-#   5 key taxonomy   7 teks dlm taxonomy mode   0 perintah shell
-# Selalu: CATAT dulu (lalu jalankan) => lkc ikut melihat barisnya sendiri.
+# Classification of the first token (kind):
+#   1 exit/quit   2 "lk" itself   3 lkc   4 lkset   6 cd (builtin)
+#   5 taxonomy key   7 text in taxonomy mode   0 shell command / plain text
+# Always LOG while/before the line runs => lkc sees its own line.
 # ---------------------------------------------------------------------
 .macro EMITL tag, ctx
         lea     rdi, [rip+\tag]
@@ -3109,7 +3022,7 @@ handle_line:
         mov     rcx, [rip+h_toklen]
         mov     al, [r14+rcx]
         mov     [rip+h_savech], al
-        mov     byte ptr [r14+rcx], 0       # token pertama jadi cstr sementara
+        mov     byte ptr [r14+rcx], 0       # first token becomes a temporary cstr
         xor     ebx, ebx
         cmp     qword ptr [rip+cli_flag], 0
         jne     .Lhl_nolk
@@ -3122,7 +3035,7 @@ handle_line:
         jnz     .Lhl_strip
         mov     ebx, 2
         jmp     .Lhl_cls_done
-.Lhl_strip:                                 # "lk gg x" => proses "gg x" (tanpa rekursi)
+.Lhl_strip:                                 # "lk gg x" => process "gg x" (no recursion)
         mov     r14, r12
         mov     r15, r13
         jmp     .Lhl_top
@@ -3185,7 +3098,7 @@ handle_line:
         je      .Lhl_cls_done
         mov     ebx, 7
 .Lhl_cls_done:
-        cmp     ebx, 5                      # kind 5 butuh token tetap cstr
+        cmp     ebx, 5                      # kind 5 needs the token to stay a cstr
         je      .Lhl_dispatch
         mov     rcx, [rip+h_toklen]
         mov     al, [rip+h_savech]
@@ -3215,7 +3128,7 @@ handle_line:
 .Lhl_lk:
         cmp     byte ptr [rip+mode_key], 0
         je      .Lhl_lk2
-        EMITL   s_lktags, s_empty
+        EMITL   s_lk, s_lktags
         mov     byte ptr [rip+mode_key], 0
         jmp     .Lhl_tail0
 .Lhl_lk2:
@@ -3239,8 +3152,8 @@ handle_line:
         ERR     m_noact, m_noact_len
         mov     qword ptr [rip+exit_code], 2
         jmp     .Lhl_done0
-.Lhl_sw:                                    # masuk taxonomy mode
-        EMITL   s_lktags, s_empty
+.Lhl_sw:                                    # enter taxonomy mode
+        EMITL   s_lk, s_lktags
         lea     rdi, [rip+mode_key]
         mov     rsi, r14
         lea     rdx, [rip+mode_key+63]
@@ -3280,27 +3193,55 @@ handle_line:
         mov     byte ptr [rip+mode_key], 0
         jmp     .Lhl_plain
 .Lhl_mode2:
-        mov     rsi, rax
+        mov     [rip+h_ctx], rax                    # context of the active taxonomy key
+        xor     ebx, ebx                            # ebx = probe verdict (default: plain text)
+        cmp     qword ptr [rip+line_trunc], 0
+        jne     .Lhl_mlog                           # truncated line: log only, never run
+        mov     rdi, r14
+        call    probe_start                         # runs the line if its 1st word is a command
+        mov     ebx, eax
+.Lhl_mlog:
         lea     rdi, [rip+mode_key]
+        mov     rsi, [rip+h_ctx]
         mov     rdx, r14
         mov     rcx, r15
         call    emit_entry
         test    rax, rax
-        jnz     .Lhl_fatal
+        jnz     .Lhl_fatal_reap
+        call    probe_finish
         jmp     .Lhl_tail0
 .Lhl_plain:
-        EMITL   s_none, s_bash
         cmp     qword ptr [rip+cli_flag], 0
-        jne     .Lhl_runcli
+        jne     .Lhl_cliplain
         cmp     qword ptr [rip+line_trunc], 0
-        jne     .Lhl_skiprun
+        jne     .Lhl_trunclog
+        mov     rdi, r14
+        call    probe_start                         # runs the line if its 1st word is a command
+        mov     ebx, eax
+        lea     rdi, [rip+s_none]
+        lea     rsi, [rip+s_bash]
+        test    ebx, ebx
+        jnz     .Lhl_pl_log
+        lea     rsi, [rip+s_empty]                  # plain text => note: tags "none", empty context
+.Lhl_pl_log:
+        mov     rdx, r14
+        mov     rcx, r15
+        call    emit_entry
+        test    rax, rax
+        jnz     .Lhl_fatal_reap
+        call    probe_finish
+        cmp     ebx, 2                              # bash unavailable => fall back to /bin/sh
+        jne     .Lhl_tail0
         mov     rdi, r14
         call    run_shell_line
         jmp     .Lhl_tail0
+.Lhl_trunclog:
+        EMITL   s_none, s_bash
 .Lhl_skiprun:
         ERR     m_trunc, m_trunc_len
         jmp     .Lhl_tail0
-.Lhl_runcli:
+.Lhl_cliplain:
+        EMITL   s_none, s_bash
         call    run_cli
         mov     rax, [rip+last_status]
         mov     [rip+exit_code], rax
@@ -3310,6 +3251,8 @@ handle_line:
 .Lhl_done0:
         xor     eax, eax
         jmp     .Lhl_ret
+.Lhl_fatal_reap:
+        call    probe_finish
 .Lhl_fatal:
         mov     qword ptr [rip+exit_code], 1
         mov     eax, 1
@@ -3321,7 +3264,7 @@ handle_line:
         pop     rbx
         ret
 
-# out_prompt(): "lk> " atau "lk [[Context]] > "
+# out_prompt(): "lk> " or "lk [[Context]] > "
 out_prompt:
         push    rbx
         cmp     byte ptr [rip+mode_key], 0
@@ -3350,14 +3293,14 @@ out_prompt:
         ret
 
 # ---------------------------------------------------------------------
-# interactive(): loop baca stdin -> handle_line.  Prompt hanya di TTY.
+# interactive(): read stdin loop -> handle_line.  Prompt only on a TTY.
 # ---------------------------------------------------------------------
 interactive:
         push    rbx
         push    r12
         push    r13
         push    r14
-        mov     eax, SYS_ioctl              # TCGETS pada stdin
+        mov     eax, SYS_ioctl              # TCGETS on stdin
         xor     edi, edi
         mov     esi, 0x5401
         lea     rdx, [rip+termios]
@@ -3366,6 +3309,7 @@ interactive:
         test    rax, rax
         jnz     .Lia_loop
         mov     r12d, 1
+        mov     [rip+is_tty], r12                   # remember: stdin is a TTY
 .Lia_loop:
         test    r12d, r12d
         jz      .Lia_read
@@ -3413,7 +3357,7 @@ interactive:
         pop     rbx
         ret
 
-# join_args() -> rax = panjang; actbuf = argv[1..] dipisah spasi (terpotong di ACTMAX)
+# join_args() -> rax = length; actbuf = argv[1..] separated by spaces (truncated at ACTMAX)
 join_args:
         push    r13
         lea     rdi, [rip+actbuf]
@@ -3491,7 +3435,7 @@ _start:
         jmp     .Lst_exit
 
 .Lst_cfg:
-        mov     eax, SYS_ioctl              # stdout TTY? => warna
+        mov     eax, SYS_ioctl              # stdout is a TTY? => color
         mov     edi, 1
         mov     esi, 0x5401
         lea     rdx, [rip+termios]
@@ -3499,7 +3443,7 @@ _start:
         test    rax, rax
         jnz     .Lst_nc
         mov     qword ptr [rip+color_on], 1
-        lea     rdi, [rip+s_nocolor_eq]     # NO_COLOR=non-kosong => matikan
+        lea     rdi, [rip+s_nocolor_eq]     # NO_COLOR=non-empty => disable
         mov     rsi, [rip+envp_ptr]
         call    getenv
         test    rax, rax
@@ -3537,4 +3481,3 @@ _start:
         syscall
 
         .section .note.GNU-stack,"",@progbits
-
