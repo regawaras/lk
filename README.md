@@ -1,5 +1,4 @@
-
-gKlerk (LK)
+# LogKlerk (LK)
 
 > *"Just Open Terminal, Type, Enter, Forget Brutal"*
 
