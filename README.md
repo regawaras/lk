@@ -4,6 +4,13 @@
 
 **LogKlerk** is a lightning-fast, highly structured terminal journaling system. It acts as your chronological brain dump: every line you type is timestamped and filed into a plain Markdown vault, organized by year, month and day. No database, no GUI, no lock-in.
 
+## 📸 Screenshots & Examples
+
+| Minimalistic Setup View | Full Desktop Setup View |
+| :---: | :---: |
+| ![LogKlerk Terminal Screenshot](assets/20261128T091701-ss.png) | ![LogKlerk Output Example](assets/other-example.jpg) |
+
+## Multiple Programming Language
 LogKlerk comes in two flavors that share the same Markdown log format:
 
 | | **Rust version** (main) | **Shell version** (alternative) |
@@ -401,4 +408,6 @@ Config files, tags and commands are **not** shared between the two versions: re-
 ## 📄 License
 
 This project is licensed under the MIT License. Feel free to fork, modify and improve!
+
+
 
