@@ -1,38 +1,73 @@
-# Modul: LogKlerk Help Manual (lkh)
+#!/bin/sh
+# Modul: lkh (LogKlerk Help Manual - v0.0.3 Experimental)
+
+_lk_show_help() {
+    # =========================================================================
+    # COLOR PALETTE CONFIGURATION
+    # =========================================================================
+    LK_RESET=$(printf '\033[0m')
+    LK_AMBER=$(printf '\033[38;2;255;255;0m')
+    LK_LIME=$(printf '\033[38;2;100;255;0m')
+    LK_GREY=$(printf '\033[90m')
+    LK_CYAN=$(printf '\033[38;2;0;255;255m')
+    LK_ORANGE=$(printf '\033[38;2;225;102;0m')
+    # =========================================================================
+
+    printf "\n%s========================================================================%s\n" "$LK_ORANGE" "$LK_RESET"
+    printf "%s                 LogKlerk (LK) v0.0.3 Experimental Manual               %s\n" "$LK_ORANGE" "$LK_RESET"
+    printf "%s========================================================================%s\n\n" "$LK_ORANGE" "$LK_RESET"
+    
+    # 1. CORE LOGGING
+    printf "%s[1. Core Logging & TUI]%s\n" "$LK_LIME" "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lk [text]" "$LK_RESET" "$LK_GREY" "Catat log standar ke waktu saat ini secara instan." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lki" "$LK_RESET" "$LK_GREY" "Buka Interactive Mode (Hybrid Shell + TUI)." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lk -v \"[teks]\"" "$LK_RESET" "$LK_GREY" "Catat log dengan tag versi LogKlerk otomatis." "$LK_RESET"
+    printf "\n"
+
+    # 2. TAXONOMY & CONTEXT
+    printf "%s[2. Context & Taxonomy Engine]%s\n" "$LK_LIME" "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkset <alias>=\"[[Tag]]\"" "$LK_RESET" "$LK_GREY" "Buat alias tag dinamis (Contoh: lkset wbl=\"[[Web]]\")." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkfiles <alias>=\"[[Folder]]\"" "$LK_RESET" "$LK_GREY" "Buat alias ke direktori file eksklusif (Standalone)." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "<alias> [text]" "$LK_RESET" "$LK_GREY" "Gunakan alias yang sudah dibuat untuk mencatat." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "<alias>" "$LK_RESET" "$LK_GREY" "Ketik alias saja lalu Enter untuk masuk ke mode LKI tag." "$LK_RESET"
+    printf "\n"
+
+    # 3. SUMMARIZER
+    printf "%s[3. Smart Summarizer (lksum)]%s\n" "$LK_LIME" "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lksum 2026 \"Teks\"" "$LK_RESET" "$LK_GREY" "Perbarui Ringkasan Tahunan (Yearly Summary)." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lksum 202604 \"Teks\"" "$LK_RESET" "$LK_GREY" "Perbarui Ringkasan Bulanan (Monthly Summary)." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lksum 20260422 \"Teks\"" "$LK_RESET" "$LK_GREY" "Perbarui Ringkasan Harian (Daily Summary)." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lksum 14 \"Teks\"" "$LK_RESET" "$LK_GREY" "Perbarui Ringkasan Jam hari ini (Hourly Summary)." "$LK_RESET"
+    printf "\n"
+
+    # 4. CHRONOLOGICAL READER
+    printf "%s[4. Chronological Reader (lkc)]%s\n" "$LK_LIME" "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkc" "$LK_RESET" "$LK_GREY" "Baca seluruh log hari ini." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkc 2026-04-12" "$LK_RESET" "$LK_GREY" "Baca seluruh log pada tanggal spesifik." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkcd [YYYYMMDD]" "$LK_RESET" "$LK_GREY" "Tampilkan rekap Daily + Hourly Summary." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkch" "$LK_RESET" "$LK_GREY" "Tampilkan seluruh log pada jam saat ini." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkcm [YYYYMM]" "$LK_RESET" "$LK_GREY" "Tampilkan rekap per hari dalam satu bulan." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkcy [YYYY]" "$LK_RESET" "$LK_GREY" "Tampilkan rekap per bulan dalam satu tahun." "$LK_RESET"
+    printf "\n"
+
+    # 5. ANALYTICS & SEARCH
+    printf "%s[5. Analytics & Search Engine]%s\n" "$LK_LIME" "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lks [scope] [keyword]" "$LK_RESET" "$LK_GREY" "Cari kata kunci (Scope: -t, -[HH], YYYY-MM)." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lksort" "$LK_RESET" "$LK_GREY" "Tampilkan Help Menu untuk Analytics Sorter." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lksort 202604" "$LK_RESET" "$LK_GREY" "Tampilkan tabel matriks log bulan April 2026." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lksort size asc" "$LK_RESET" "$LK_GREY" "Urutkan file secara global dari terkecil ke terbesar." "$LK_RESET"
+    printf "\n"
+
+    # 6. SMART EDITOR
+    printf "%s[6. Smart Module Editor (lkv)]%s\n" "$LK_LIME" "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkv" "$LK_RESET" "$LK_GREY" "Buka file log hari ini di \$EDITOR (Vim)." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkv 20260422" "$LK_RESET" "$LK_GREY" "Buka file log pada tanggal spesifik." "$LK_RESET"
+    printf "  %s%-30s%s : %s%s%s\n" "$LK_CYAN" "lkv <modul>" "$LK_RESET" "$LK_GREY" "Edit skrip modul langsung (Contoh: lkv lki, lkv lksum)." "$LK_RESET"
+    
+    printf "\n%s========================================================================%s\n" "$LK_ORANGE" "$LK_RESET"
+}
+
+# Wrapper agar modul bisa dipanggil langsung
 lkh() {
-    printf "\033[38;2;255;117;0m=== LogKlerk (LK) System Manual ===\033[0m\n"
-    
-    printf "\033[38;2;0;255;255mCore Write & Config Commands:\033[0m\n"
-    printf "  \033[1mlk [text]\033[0m               : Append a new log. If empty, enters Interactive Mode.\n"
-    printf "  \033[1mlk -set -alias <x>=\"<y>\"\033[0m : Create dynamic tag (e.g., lk -set alias soy=\"[[Searching on Youtube]]\").\n"
-    printf "  \033[1mlk -set -dir <path>\033[0m       : Change data directory (Options: -home, -default, or /custom/path).\n"
-    printf "  \033[1mlk -set -today [text]\033[0m   : Set/update the Daily Summary at the top of today's file.\n"
-    printf "  \033[1mlk -set YYYY-MM-DD [txt]\033[0m: Set/update the Daily Summary for a specific historical date.\n"
-    printf "  \033[1mlk -set [HH] | [HH-HH]\033[0m  : Set an Hourly Summary (e.g., 'lk -set 08-10 \"Deep Work\"').\n"
-    printf "  \033[1mlk -search | -s\033[0m         : Unified search engine. Same as using 'lks' command.\n"
-    printf "  \033[1mlk -help | -h\033[0m           : Show this manual.\n"
-    
-    printf "\n\033[38;2;0;255;255mReading, Editing & Display (lkc & vlk):\033[0m\n"
-    printf "  \033[1mlkc\033[0m                   : Read all logs for today (Fallback Alias: clk).\n"
-    printf "  \033[1mlkc -a | -all\033[0m         : Display ALL daily summaries across all time.\n"
-    printf "  \033[1mlkc -y | -year\033[0m        : Display daily summaries for the CURRENT year.\n"
-    printf "  \033[1mlkc -m | -month\033[0m       : Display daily summaries for the CURRENT month (Alias: clkm).\n"
-    printf "  \033[1mlkc YYYY-MM-DD\033[0m        : Display full logs for a specific date.\n"
-    printf "  \033[1mlkc [HH] | [HH-HH]\033[0m    : Display logs for a specific hour/range today.\n"
-    printf "  \033[1mlkcs\033[0m                  : Display today's main Daily Summary & all Hourly Summaries (Alias: clks).\n"
-    printf "  \033[1mlkch\033[0m                  : Display all logs for the CURRENT hour (Alias: clkh).\n"
-    printf "  \033[1mvlk [YYYY-MM-DD]\033[0m      : Open TODAY's or a specific date's markdown file in \$EDITOR.\n"
-    printf "  \033[1mvlkc\033[0m                  : Edit the core LogKlerk script directly.\n"
-    
-    printf "\n\033[38;2;0;255;255mAdvanced Search Engine (lks):\033[0m\n"
-    printf "  \033[1mlks [keyword]\033[0m         : Recursive search across ALL files and time.\n"
-    printf "  \033[1mlks -t [keyword]\033[0m      : Search only in TODAY's file.\n"
-    printf "  \033[1mlks -[HH] [keyword]\033[0m   : Search across all days, but ONLY at a specific hour.\n"
-    printf "  \033[1mlks YYYY-MM [keyword]\033[0m : Search within a specific month.\n"
-    printf "  \033[1mlks YYYY-MM-DD [key]\033[0m  : Search only on a specific historical date.\n"
-    
-    printf "\n\033[38;2;0;255;255mDynamic Tags Usage:\033[0m\n"
-    printf "  Simply type your mapped alias followed by your note.\n"
-    printf "  Example: \033[1msoy \"Watching a tutorial on POSIX compliance\"\033[0m\n"
-    printf "\033[38;2;255;117;0m=========================================\033[0m\n"
+    _lk_show_help
 }

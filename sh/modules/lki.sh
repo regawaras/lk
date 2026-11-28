@@ -4,22 +4,37 @@
 lki() {
     CATEGORY_STRING="$1"
 
-    # --- 1. Environment & Configuration Resolution ---
     LK_STATUS="${LK_STATUS:-experimental}"
-    LK_VERSION="${LK_VERSION:-v0.0.2}"
+    LK_VERSION="${LK_VERSION:-v0.0.4}"
     
     LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
     LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
     LK_TAXONOMY_FILE="${LK_CONFIG_DIR}/modules/context.sh"
     
-    LK_DIR="${HOME}/.local/share/logklerk"
+    LK_DIR="/run/media/nixos/c9a0990e-ba7f-4860-ba3b-1a7cd1182b50/home/regawaras/als/lk/"
     LK_DEFAULT_FORMAT=".md"
     
-    # Default Tail Variables
     LK_TAIL_LINES="10"
-    LK_COMMAND_TAIL_LINES="1" # Tail minimal untuk command Linux
+    LK_COMMAND_TAIL_LINES="1"
 
+    # Muat konfigurasi lebih dulu sebelum mendefinisikan warna
     [ -f "$LK_CONFIG_FILE" ] && . "$LK_CONFIG_FILE"
+
+    # =========================================================================
+    # COLOR PALETTE CONFIGURATION (Namespace Protected)
+    # =========================================================================
+    LK_RESET=$(printf '\033[0m')
+    LK_AMBER=$(printf '\033[38;2;255;204;0m')
+    LK_LIME=$(printf '\033[38;2;100;255;0m')
+    LK_GREY=$(printf '\033[38;2;150;150;150m') 
+    LK_CYAN=$(printf '\033[38;2;0;255;255m')
+    LK_PURPLE=$(printf '\033[38;2;180;100;255m')
+    LK_ORANGE=$(printf '\033[38;2;255;102;0m')
+    LK_DIM=$(printf '\033[2m')
+    LK_DARKGREY=$(printf '\033[38;2;105;105;105m')
+    LK_YELLOW=$(printf '\033[38;2;255;220;0m')
+    LK_MAGENTA=$(printf '\033[1;35m')
+    # =========================================================================
 
     _lki_update_vars() {
         TODAY=$(date +%Y-%m-%d)
@@ -30,46 +45,31 @@ lki() {
         FILENAME="$LK_TDIR/$TODAY${LK_DEFAULT_FORMAT}"
     }
 
-    # --- 2. TUI Header Generator ---
     _lki_draw_header() {
-        TERM_LINES=$(tput lines 2>/dev/null || stty size 2>/dev/null | cut -d' ' -f1 || echo 24)
-        printf "\033[2J\033[1;1H" 
+        clear 
         
-        BANNER_LINES=0
         if [ -f "$LK_CONFIG_DIR/assets/banner.txt" ]; then
-            printf "\033[38;5;202m"
+            printf "%s" "$LK_ORANGE"
             cat "$LK_CONFIG_DIR/assets/banner.txt"
-            printf "\033[0m"
-            
-            while IFS= read -r _dummy || [ -n "$_dummy" ]; do
-                BANNER_LINES=$((BANNER_LINES + 1))
-            done < "$LK_CONFIG_DIR/assets/banner.txt"
+            printf "%s" "$LK_RESET"
         fi
         
-        printf "\033[38;5;202m | LK Log Klerk %s %s | Github: https://github.com/regawaras/lk/\n" "$LK_STATUS" "$LK_VERSION"
-        printf "\033[38;5;202m | ''Just Type Enter Brutal'' - Log Klerking Creator \n" 
-        printf "\033[38;5;202m | -------------- LK Interactive Mode (Hybrid Shell & Taxonomy) --------------\033[0m\n"
-        printf "\033[38;2;105;105;105m | Hour Block: \033[38;2;255;220;0m%s\033[38;2;105;105;105m | Source: %s\033[0m\n" "$CURRENT_HOUR" "$LK_CONFIG_DIR"
-        
-        TUI_START=$((BANNER_LINES + 6))
-        
-        printf "\033[%d;%dr" "$TUI_START" "$TERM_LINES"
-        printf "\033[%d;1H" "$TUI_START"
+        printf "${LK_ORANGE} | LK LogKlerk %s %s | Github: https://github.com/regawaras/lk/ |\n${LK_RESET}" "$LK_STATUS" "$LK_VERSION"
+        printf "${LK_ORANGE} | ''Just Open Terminal, Type, Enter, Forget Brutal'' -LK LogKlerking Creator |\n${LK_RESET}" 
+        printf "${LK_GREY} | -------------- LK Interactive Mode (Hybrid Shell & Context) -------------- |\n${LK_RESET}"
+        printf "${LK_GREY} | Hour Block: ${LK_CYAN}%s${LK_GREY} | Source: %s |\n${LK_RESET}" "$CURRENT_HOUR" "$LK_CONFIG_DIR"
+        printf "\n"
     }
 
     _lki_update_vars
     _lki_draw_header
 
-    # Deteksi shell yang sedang aktif
     executing_shell=$(ps -p $$ -o comm= 2>/dev/null || basename "$SHELL" 2>/dev/null || echo "sh")
     executing_shell=$(basename "$executing_shell" | sed 's/^-//')
     SHELL_TAG="[[$executing_shell]] >>"
 
-    # --- 3. Main Interactive Loop ---
     while true; do
         _lki_update_vars
-        
-        # Reset current tail lines ke standar setiap kali loop berulang
         current_tail_lines="$LK_TAIL_LINES"
         
         disp_prompt=$(echo "$CATEGORY_STRING" | sed 's/ >>$//')
@@ -77,27 +77,26 @@ lki() {
         [ "$disp_filename" != "$FILENAME" ] && disp_filename="~/$disp_filename"
 
         if [ -n "$disp_prompt" ]; then
-            printf "\033[38;5;202mLog As %s to %s\033[0m\n>> " "$disp_prompt" "$disp_filename"
+            printf "${LK_ORANGE}Log As %s to %s\n>> ${LK_RESET}" "$disp_prompt" "$disp_filename"
         else
-            printf "\033[38;5;202mLog to %s\033[0m\n>> " "$disp_filename"
+            printf "${LK_ORANGE}Log to %s\n>> ${LK_RESET}" "$disp_filename"
         fi
 
         if ! read -r line; then break; fi
-        
         curr_ts=$(date +%H:%M:%S)
         
+        # Menghapus dua baris prompt ke atas setelah user menekan enter
         printf "\033[F\033[K\033[F\033[K" 
         
         if [ -n "$line" ]; then
-            # TUI HISTORY TRACE
-            printf "\033[1;35m❯ %s\033[0m\n" "$line"
+            printf "${LK_MAGENTA}❯ %s${LK_RESET}\n" "$line"
 
             cmd="${line%% *}"
             args="${line#* }"
             [ "$cmd" = "$args" ] && args=""
 
             if [ "$cmd" = "-exit" ] || [ "$cmd" = "-q" ] || [ "$cmd" = "exit" ] || [ "$cmd" = "quit" ]; then
-                printf "\033[r"; clear; break
+                break
             fi
             
             if [ "$cmd" = "clear" ]; then
@@ -105,19 +104,16 @@ lki() {
                 continue
             fi
 
-            # --- DYNAMIC TAXONOMY PARSER ---
             override_tag=""
             if [ -f "$LK_TAXONOMY_FILE" ] && [ -n "$cmd" ]; then
                 override_tag=$(grep "^${cmd}[[:space:]]*()[[:space:]]*{" "$LK_TAXONOMY_FILE" 2>/dev/null | sed -n 's/.*lk_context "\(.*\)" "\$@".*/\1/p')
             fi
 
-            # --- FULLSCREEN INTERCEPTOR ---
             is_fullscreen=0
             case "$cmd" in
                 vim|vi|nano|htop|top|less|man|tmux|screen) is_fullscreen=1 ;;
             esac
 
-            # --- HYBRID EVALUATION ENGINE & LOGGING ---
             if [ -n "$override_tag" ]; then
                 if [ -z "$args" ]; then
                     CATEGORY_STRING="$override_tag"
@@ -127,34 +123,32 @@ lki() {
                     LOG_TEXT="$args"
                 fi
             elif [ "$is_fullscreen" -eq 1 ]; then
-                printf "\033[r" 
                 eval "$line"
                 _lki_draw_header 
                 ACTIVE_TAG="$SHELL_TAG"
                 LOG_TEXT="$line"
-                current_tail_lines="$LK_COMMAND_TAIL_LINES" # Gunakan Tail Minimal
+                current_tail_lines="$LK_COMMAND_TAIL_LINES"
             elif command -v "$cmd" >/dev/null 2>&1; then
                 eval "$line"
                 ACTIVE_TAG="$SHELL_TAG"
                 LOG_TEXT="$line"
-                current_tail_lines="$LK_COMMAND_TAIL_LINES" # Gunakan Tail Minimal
+                current_tail_lines="$LK_COMMAND_TAIL_LINES"
             else
-                # --- STANDARD LOGGING ---
                 ACTIVE_TAG="$CATEGORY_STRING"
                 LOG_TEXT="$line"
             fi
 
-            # --- Log Writing Execution ---
             mkdir -p "$LK_TDIR"
             indent="    "
 
             if [ ! -f "$FILENAME" ]; then
-                printf -- "- [[%s]] - (Daily Summary)\n" "$TODAY" >> "$FILENAME"
+                printf -- "- # [[%s]] - (Daily Summary)\n" "$TODAY" >> "$FILENAME"
                 printf "%screated: [[%s]] - %s\n" "$indent" "$TODAY" "$curr_ts" >> "$FILENAME"
             fi
 
-            if ! grep -q "^${indent}- ${CURRENT_HOUR} -" "$FILENAME" 2>/dev/null; then
-                printf "%s- %s - (Hourly Summary)\n" "$indent" "$CURRENT_HOUR" >> "$FILENAME"
+            # FIX 1: Deteksi dan penulisan blok Jam Baru (Hard Fork '##')
+            if ! grep -q "^${indent}- ## ${CURRENT_HOUR} -" "$FILENAME" 2>/dev/null; then
+                printf "%s- ## %s - (Hourly Summary)\n" "$indent" "$CURRENT_HOUR" >> "$FILENAME"
             fi
 
             if [ -n "$ACTIVE_TAG" ]; then
@@ -165,11 +159,39 @@ lki() {
 
             printf "%s\n" "$log_entry" >> "$FILENAME"
             
-            # Print Tail Result menggunakan current_tail_lines dinamis
-            printf "\033[2m--- Last %s Lines ---\033[0m\n" "$current_tail_lines"
-            tail -n "$current_tail_lines" "$FILENAME"
-            printf "\033[2m------------------------------------------------------------\033[0m\n"
+            printf "${LK_DIM}--- Last %s Lines ---${LK_RESET}\n" "$current_tail_lines"
+            
+            # FIX 2: Pembaruan regex AWK untuk mewarnai '## HH:00' dengan benar
+            tail -n "$current_tail_lines" "$FILENAME" | awk -v reset="$LK_RESET" -v amber="$LK_AMBER" -v cyan="$LK_CYAN" -v grey="$LK_GREY" -v lime="$LK_LIME" -v orange="$LK_ORANGE" '
+            $0 ~ /^-[[:space:]]*(#)?[[:space:]]*\[\[[0-9]{4}(-[0-9]{2}){0,2}\]\]/ {
+                print amber $0 reset; next
+            }
+            $0 ~ /^[ ]{4}- (## )?[0-2][0-9]:00/ {
+                print cyan $0 reset; next
+            }
+            $0 ~ /^[ ]{8}- [0-2][0-9]:[0-5][0-9]:[0-5][0-9] - / {
+                ts_part = substr($0, 1, 21)
+                rest_part = substr($0, 22)
+                
+                if (match(rest_part, /^\[\[.*\]\] >>/)) {
+                    tag_part = substr(rest_part, 1, RLENGTH)
+                    msg_part = substr(rest_part, RLENGTH + 1)
+                    print lime ts_part orange tag_part grey msg_part reset
+                } else if (match(rest_part, /^\[[a-zA-Z0-9._-]+\] >>/)) {
+                    tag_part = substr(rest_part, 1, RLENGTH)
+                    msg_part = substr(rest_part, RLENGTH + 1)
+                    print lime ts_part orange tag_part grey msg_part reset
+                } else {
+                    print lime ts_part grey rest_part reset
+                }
+                next
+            }
+            { 
+                print grey $0 reset 
+            }
+            '
+            
+            printf "${LK_DIM}------------------------------------------------------------${LK_RESET}\n"
         fi
     done
-    printf "\033[r" 
 }

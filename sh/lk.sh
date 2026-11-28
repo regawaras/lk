@@ -1,33 +1,46 @@
 #!/bin/sh
-# LogKlerk (LK) v0.0.1 Stable - 100% POSIX-Compliant Core
+# LogKlerk (LK) v0.0.3 Experimental - 100% POSIX-Compliant Core
 # Minimalist, zero-dependency, atomic-locking daily logger.
 
-LK_STATUS="experimental"; LK_VERSION="v0.0.2"
+LK_STATUS="experimental"; LK_VERSION="v0.0.3"
 
-# 1. POSIX Absolute Path Resolution: Melacak lokasi asli lk.sh berada
+# 1. POSIX Absolute Path Resolution
 LK_INSTALL_DIR=$(cd "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 LK_MODULES_DIR="${LK_CONFIG_DIR}/modules"
 
-# 2. Direktori Konfigurasi Pengguna (State & Preferences)
+# 2. User Configuration Directory
 LK_CONFIG_DIR="${HOME}/.config/lk/${LK_STATUS}/${LK_VERSION}"
 LK_CONFIG_FILE="${LK_CONFIG_DIR}/lk.conf"
-LK_TAXONOMY_FILE="$LK_CONFIG_DIR/taxonomy.sh"
+LK_TAXONOMY_FILE="$LK_CONFIG_DIR/modules/context.sh" # Updated path to match previous modularity
 
-# Auto-Bootstrapping: Hanya mengurus pembuatan preferensi pengguna, BUKAN file sistem
+# Auto-Bootstrapping
 if [ ! -d "$LK_CONFIG_DIR" ]; then
     mkdir -p "${LK_CONFIG_DIR}" "${HOME}/lk"
-    printf 'LK_DIR="%s/lk"\nLK_TAIL_LINES="0"\nLK_DEFAULT_FORMAT=".md"\n' "$HOME" > "$LK_CONFIG_FILE"
+    printf 'LK_DIR="%s/lk"\nLK_TAIL_LINES="10"\nLK_DEFAULT_FORMAT=".md"\n' "$HOME" > "$LK_CONFIG_FILE"
 fi
 
-# Variabel Default (Akan ditimpa oleh lk.conf jika ada)
+# Default Variables
 LK_DIR="${HOME}/lk"
-LK_TAIL_LINES="0"
+LK_TAIL_LINES="10"
 LK_DEFAULT_FORMAT=".md"
 LK_BANNER="${LK_CONFIG_DIR}/assets/banner.txt"          
 
 [ -f "$LK_CONFIG_FILE" ] && . "$LK_CONFIG_FILE"
 
+# =========================================================================
+# COLOR PALETTE CONFIGURATION (Universal Core)
+# =========================================================================
+LK_RESET=$(printf '\033[0m')
+LK_AMBER=$(printf '\033[38;2;255;255;0m')       # Daily Summary Date
+LK_LIME=$(printf '\033[38;2;100;255;0m')        # Timestamps
+LK_GREY=$(printf '\033[38;2;150;150;150m')      # True Color Bright Grey (Fixed for Wayland)
+LK_CYAN=$(printf '\033[38;2;0;255;255m')        # Hourly Summary Time
+LK_ORANGE=$(printf '\033[38;2;225;102;0m')      # Custom Orange (Taxonomy & Banner)
+LK_DIM=$(printf '\033[2m')                      # Dim/Faded (Tails Line)
+LK_GREEN=$(printf '\033[32m')                   # Success Checkmarks
+# =========================================================================
 
+# Load all available modules
 if [ -d "$LK_MODULES_DIR" ]; then
     for mod_file in "$LK_MODULES_DIR"/*.sh; do
         [ -f "$mod_file" ] && . "$mod_file"
@@ -40,46 +53,64 @@ fi
 
 lk() {
     case "${1:-}" in
+        # --- Default Behavior: Launch LKI or Show Fallback Banner ---
         "")
-	if [ -f "$LK_BANNER" ]; then
-            printf "\033[38;5;202m" # Memberikan warna aksen kuning pada banner
-            cat "$LK_BANNER"
-	fi
-            printf " | LK Log Klerk %s %s | Github: https://github.com/regawaras/lk/\n" "$LK_STATUS" "$LK_VERSION"
-            printf " | ''Just Type Enter Brutal'' - Log Klerking Creator \n" "$LK_STATUS" "$LK_VERSION"
-            printf "\033[0m\n"
-            return 0 ;;
+            if type lki >/dev/null 2>&1; then
+                lki ""
+                return $?
+            else
+                curr_hr=$(date +%H:00)
+                if [ -f "$LK_BANNER" ]; then
+                    printf "%s" "$LK_ORANGE"
+                    cat "$LK_BANNER"
+                fi
+                printf "%s | LK LogKlerk %s %s | Github: https://github.com/regawaras/lk/ |\n" "$LK_ORANGE" "$LK_STATUS" "$LK_VERSION"
+                printf " | ''Just Open Terminal, Type, Enter, Forget Brutal'' -LK LogKlerking Creator |\n"
+                printf "${LK_GREY} | -------------- LK Interactive Mode (Hybrid Shell & Context) -------------- |\n"
+                printf " | Hour Block: ${LK_CYAN}%s${LK_GREY} | Source: %s |\n${LK_RESET}" "$curr_hr" "$LK_CONFIG_DIR"
+                return 0
+            fi
+            ;;
+        
         h|-h|help|-help|--help)
-            if [ -f "${LK_MODULES_DIR}/lkh.sh" ]; then
+            if type lkvh >/dev/null 2>&1; then
+                lkvh
+            elif [ -f "${LK_MODULES_DIR}/lkh.sh" ]; then
                 . "${LK_MODULES_DIR}/lkh.sh"
                 _lk_show_help
             else
-                printf "Error: Help module not found at %s\n" "${LK_MODULES_DIR}/lkh.sh" >&2
+                printf "\033[31m[Error]\033[0m Help module not found.\n" >&2
             fi
             return 0 ;;
+            
         i|-i|interactive|lki)
-            if [ -f "${LK_MODULES_DIR}/lki.sh" ]; then
-                . "${LK_MODULES_DIR}/lki.sh"
-                _lk_interactive
+            if type lki >/dev/null 2>&1; then
+                lki ""
             else
-                printf "Error: Interactive module not found at %s\n" "${LK_MODULES_DIR}/lki.sh" >&2
+                printf "\033[31m[Error]\033[0m Interactive module (lki) not found.\n" >&2
             fi
             return 0 ;;
+            
         c|-c|conf|-conf|--config)
             printf "=== LK Configuration State ===\nCONFIG_FILE: %s\nLOGS_DIR: %s\nTAIL_LINES: %s\nFORMAT: %s\n" "$LK_CONFIG_FILE" "$LK_DIR" "$LK_TAIL_LINES" "$LK_DEFAULT_FORMAT"
             return 0 ;;
+            
         e|-e|edit|-edit|--edit)
             set -- $(date '+%Y %m %d')
             lk_today="${LK_DIR}/$1/$1-$2/$1-$2-$3${LK_DEFAULT_FORMAT:-.md}"
             [ -f "$lk_today" ] && ${EDITOR:-${VISUAL:-vi}} "$lk_today" || printf "No log entries for today yet. Just type 'lk <text>' to brutal log.\n"
             return 0 ;;
+            
         pwd|-pwd|--pwd)
             printf "%s\n" "$LK_DIR"; return 0 ;;
+            
         v|-v|ver|-ver|version|-version|--version)
-            [ "$#" -eq 1 ] && { printf "LK Log Klerk %s %s\n" "$LK_STATUS" "$LK_VERSION"; return 0; }
-            shift; _lk_write "[${LK_STATUS}-${LK_VERSION}] >>" "$@" ;;
+            [ "$#" -eq 1 ] && { printf "LK LogKlerk %s %s\n" "$LK_STATUS" "$LK_VERSION"; return 0; }
+            shift; _lk_write "[[${LK_STATUS}-${LK_VERSION}]] >>" "$@" ;;
+            
         -log-with-version|-lwv|lwv|-logver|--logver|-wv|-with-version|wv|log-with-version|log-w-version)
-            shift; _lk_write "[${LK_STATUS}-${LK_VERSION}] >>" "$@" ;;
+            shift; _lk_write "[[${LK_STATUS}-${LK_VERSION}]] >>" "$@" ;;
+            
         *) _lk_write "" "$@" ;;
     esac
 }
@@ -87,7 +118,7 @@ lk() {
 _lk_write() {
     ( 
         lk_cat="$1"; shift; lk_text="$*"
-        [ -z "$lk_text" ] && { printf "Error: No Input.\n" >&2; exit 1; }
+        [ -z "$lk_text" ] && { printf "\033[31m[Error]\033[0m No Input.\n" >&2; exit 1; }
 
         set -- $(date '+%Y %m %d %H:00 %H:%M:%S')
         lk_tdir="${LK_DIR}/$1/$1-$2"
@@ -96,6 +127,7 @@ _lk_write() {
 
         [ -d "$lk_tdir" ] || mkdir -p "$lk_tdir"
 
+        # Atomic Locking Mechanism
         while ! mkdir "$lk_lock" 2>/dev/null; do sleep 1; done
         trap 'rmdir "$lk_lock" 2>/dev/null; exit 1' HUP INT QUIT TERM ABRT
 
@@ -107,115 +139,44 @@ _lk_write() {
 
         rmdir "$lk_lock" 2>/dev/null
         
-        printf "\033[32m✔\033[0m         - %s - %s%s\n" "$5" "${lk_cat:+$lk_cat }" "$lk_text"
+        # CLI Feedback
+        printf "${LK_GREEN}✔${LK_RESET}         - ${LK_LIME}%s${LK_RESET} - ${LK_ORANGE}%s${LK_GREY}%s${LK_RESET}\n" "$5" "${lk_cat:+$lk_cat }" "$lk_text"
 
         case "${LK_TAIL_LINES:-0}" in
             *[!0-9]*|"") ;; 
             0) ;;           
             *) 
-                printf "\033[90m--- Tail: Last %s lines from %s ---\033[0m\n" "$LK_TAIL_LINES" "$1-$2-$3${LK_DEFAULT_FORMAT:-.md}"
-                tail -n "$LK_TAIL_LINES" "$lk_file" 
+                # Colorized Tail Output
+                printf "${LK_DIM}--- Tail: Last %s lines from %s ---${LK_RESET}\n" "$LK_TAIL_LINES" "$1-$2-$3${LK_DEFAULT_FORMAT:-.md}"
+                
+                tail -n "$LK_TAIL_LINES" "$lk_file" | awk -v reset="$LK_RESET" -v amber="$LK_AMBER" -v cyan="$LK_CYAN" -v grey="$LK_GREY" -v lime="$LK_LIME" -v orange="$LK_ORANGE" '
+                $0 ~ /^- \[\[[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\]\]/ {
+                    print amber $0 reset; next
+                }
+                $0 ~ /^[ ]{4}- [0-2][0-9]:00/ {
+                    print cyan $0 reset; next
+                }
+                $0 ~ /^[ ]{8}- [0-2][0-9]:[0-5][0-9]:[0-5][0-9] - / {
+                    ts_part = substr($0, 1, 21)
+                    rest_part = substr($0, 22)
+                    
+                    if (match(rest_part, /^\[\[.*\]\] >>/)) {
+                        tag_part = substr(rest_part, 1, RLENGTH)
+                        msg_part = substr(rest_part, RLENGTH + 1)
+                        print lime ts_part orange tag_part grey msg_part reset
+                    } else if (match(rest_part, /^\[[a-zA-Z0-9._-]+\] >>/)) {
+                        tag_part = substr(rest_part, 1, RLENGTH)
+                        msg_part = substr(rest_part, RLENGTH + 1)
+                        print lime ts_part orange tag_part grey msg_part reset
+                    } else {
+                        print lime ts_part grey rest_part reset
+                    }
+                    next
+                }
+                { print grey $0 reset }
+                '
+                printf "${LK_DIM}------------------------------------------------------------${LK_RESET}\n"
                 ;;
         esac
     )
-}
-
-
-if [ -f "$LK_CONFIG_FILE" ]; then
-    . "$LK_CONFIG_FILE"
-fi
-
-if [ -d "$LK_MODULES_DIR" ]; then
-    for mod_file in "$LK_MODULES_DIR"/*.sh; do
-        [ -f "$mod_file" ] && . "$mod_file"
-    done
-fi
-
-if [ -f "$LK_TAXONOMY_FILE" ]; then
-    . "$LK_TAXONOMY_FILE"
-fi
-
-_lk_get_time() {
-    TODAY=$(date +%Y-%m-%d)
-    YEAR=$(date +%Y)
-    MONTH=$(date +%Y-%m)
-    CURRENT_HOUR=$(date +%H:00)
-    FULL_TIMESTAMP=$(date +%H:%M:%S)
-}
-
-_lk_set_daily_summary() {
-    ds_target_date="$1"
-    shift
-    ds_summary_text="$*"
-    ds_year="${ds_target_date%%-*}"
-    ds_month="${ds_target_date%-*}"
-    ds_full_ts=$(date +%H:%M:%S)
-    ds_target_dir="$LK_DIR/$ds_year/$ds_month"
-    ds_filename="$ds_target_dir/$ds_target_date.md"
-    
-    mkdir -p "$ds_target_dir"
-    if [ ! -f "$ds_filename" ]; then
-        printf -- "- [[%s]] - %s\n" "$ds_target_date" "$ds_summary_text" >> "$ds_filename"
-        printf "    created: [[%s]] - %s\n" "$ds_target_date" "$ds_full_ts" >> "$ds_filename"
-    else
-        ds_tmp_file=$(mktemp)
-        sed "1c\\
-- [[$ds_target_date]] - $ds_summary_text
-" "$ds_filename" > "$ds_tmp_file" && mv "$ds_tmp_file" "$ds_filename"
-    fi
-    printf "\033[32mDaily Summary updated (%s): \033[38;2;0;255;255m%s\033[0m\n" "$ds_target_date" "$ds_summary_text"
-}
-
-_lk_set_summary() {
-    # Menggunakan prefix 'lksv_' (LogKlerk Summary Variable) untuk simulasi scope
-    lksv_time_input="$1"
-    shift
-    lksv_summary_text="$*"
-    
-    _lk_get_time
-    lksv_target_dir="$LK_DIR/$YEAR/$MONTH"
-    lksv_filename="$lksv_target_dir/$TODAY.md"
-    lksv_indent="    "
-
-    mkdir -p "$lksv_target_dir"
-    if [ ! -f "$lksv_filename" ]; then
-        printf -- "- [[%s]] - (Daily Summary)\n" "$TODAY" >> "$lksv_filename"
-        printf "%screated: [[%s]] - %s\n" "$lksv_indent" "$TODAY" "$FULL_TIMESTAMP" >> "$lksv_filename"
-    fi
-
-    # POSIX-compliant parsing: Memastikan hanya jam yang diproses
-    case "$lksv_time_input" in
-        *-*)
-            lksv_start_raw=$(echo "$lksv_time_input" | cut -d'-' -f1 | tr -cd '0-9')
-            lksv_end_raw=$(echo "$lksv_time_input" | cut -d'-' -f2 | tr -cd '0-9')
-            ;;
-        *)
-            lksv_start_raw=$(echo "$lksv_time_input" | tr -cd '0-9')
-            lksv_end_raw="$lksv_start_raw"
-            ;;
-    esac
-
-    # Menghapus leading zero tanpa sed (lebih cepat di POSIX)
-    lksv_start=$(echo "$lksv_start_raw" | sed 's/^0*//'); [ -z "$lksv_start" ] && lksv_start=0
-    lksv_end=$(echo "$lksv_end_raw" | sed 's/^0*//'); [ -z "$lksv_end" ] && lksv_end=0
-
-    lksv_tmp_file=$(mktemp)
-    lksv_current="$lksv_start"
-    while [ "$lksv_current" -le "$lksv_end" ]; do
-        lksv_fmt=$(printf "%02d:00" "$lksv_current")
-        lksv_header="${lksv_indent}- $lksv_fmt - $lksv_summary_text"
-        
-        # POSIX sed untuk menghapus baris lama sebelum update
-        sed "3,\$ { /^${lksv_indent}- ${lksv_fmt} -/d; }" "$lksv_filename" > "$lksv_tmp_file" && mv "$lksv_tmp_file" "$lksv_filename"
-        printf "%s\n" "$lksv_header" >> "$lksv_filename"
-        lksv_current=$((lksv_current + 1))
-    done
-
-    # Sorting kronologis tanpa merusak struktur
-    head -n 2 "$lksv_filename" > "$lksv_tmp_file"
-    sed '1,2d' "$lksv_filename" | sort -b -k2,2 -u >> "$lksv_tmp_file"
-    mv "$lksv_tmp_file" "$lksv_filename"
-    
-    printf "\033[32mSummary updated (%02d-%02d): \033[38;2;0;255;255m%s\033[0m\n" "$lksv_start" "$lksv_end" "$lksv_summary_text"
-    lkcd
 }
