@@ -21,10 +21,10 @@ LogKlerk comes in three flavors:
 
 | | **Rust version** (main) | **Shell version** (alternative) | **Assembly version** (experimental) |
 |---|---|---|---|
-| Status | `experimental` · `v0.0.3` | Original implementation | `v0.0.1` · CSV format |
+| Status | `experimental` · `v0.0.3` | Original implementation | `experimental` · `v0.0.3` · CSV format |
 | Form | Single binary, `std` only, no crates | POSIX `sh` functions, sourced into your shell | Standalone x86-64 Linux binary, no libc, pure syscalls |
 | Best for | Speed, interactive mode, analytics, everyday use | Minimal systems, strict POSIX shells, zero compilation | Ultra-lightweight binary, zero dependencies, CSV logging |
-| Jump to | [Rust version](#-rust-version-main) | [Shell version](#-shell-version-alternative) | [Assembly version](#-assembly-version-v001) |
+| Jump to | [Rust version](#-rust-version-main) | [Shell version](#-shell-version-alternative) | [Assembly version](#-assembly-version-v003) |
 
 ---
 
@@ -36,7 +36,7 @@ LogKlerk comes in three flavors:
 - **Dynamic taxonomy**: create your own quick-logging tags (`todo`, `ideas`, ...) on the fly.
 - **Summaries & plans**: add hourly, daily, monthly and yearly summaries that build a table of contents over time.
 - **Search & analytics** *(Rust)*: ranking, stats, charts, word frequency, lexical diversity, snapshots and more.
-- **Plain vault**: Markdown (`YYYY/YYYY-MM/YYYY-MM-DD.md`) in Rust/Shell, or RFC 4180 CSV (`<timestamp>.csv`) in Assembly. Open it with any editor.
+- **Plain vault**: Markdown (`YYYY/YYYY-MM/YYYY-MM-DD.md`) in Rust/Shell, or RFC 4180 CSV (`YYYYMMDD.csv`, one file per local day by default) in Assembly. Open it with any editor.
 - **Concurrency safe**: simultaneous terminals don't corrupt your logs.
 
 ---
@@ -396,25 +396,42 @@ lkv 2026-04-10      # a specific date
 
 ---
 
-# ⚙️ Assembly Version (v0.0.1)
+# ⚙️ Assembly Version (v0.0.3)
 
-A standalone **x86-64 Linux** implementation written in GNU Assembler (`as`, Intel syntax) with **no `libc`** and pure Linux system calls (`clock_gettime`, `open`, `write`, `mkdir`, `ioctl`, `exit`). Instead of Markdown files, it writes RFC 4180 CSV entries (`date,context,activity`).
+A standalone **x86-64 Linux** implementation written in GNU Assembler (`as`, Intel syntax) with **no `libc`** and pure Linux system calls (`clock_gettime`, `open`, `read`, `write`, `mkdir`, `ioctl`, `fork`, `execve`, `wait4`, `pipe2`, `exit`, ...). Instead of Markdown files, it writes RFC 4180 CSV entries (`date,tags,context,activity`).
 
 ## Features
 
 - **Zero dependencies**: no `libc`, no runtime, fixed `.bss` buffers with explicit bounds checks, and no recursion or stack arrays.
-- **CSV output with escaping**: quotes fields containing `,` or `"`, doubles internal `"`, and replaces CR/LF with spaces so each entry stays on a single line.
-- **Race-free & concurrency safe**: creates log files with `O_CREAT|O_EXCL` (mode `0600`), rejects symlinks with `O_NOFOLLOW`, and writes each complete row with `O_APPEND`.
-- **Configurable timezone & taxonomy**: supports `DIR`, `TZ_OFFSET` (in seconds), and up to 32 `[taxonomy]` entries in `lk.conf`.
+- **Modular source**: the core lives in `src/main.asm`; the `lkc` log reader is its own module, `src/modules/lkc.asm`, pulled in with `.include`.
+- **ISO 8601 local timestamps**: `YYYYMMDDThhmmss`, no milliseconds. The time zone comes from `$TZ` or `/etc/localtime` (the TZif file is parsed natively, DST included) and falls back to UTC if no zone file is readable.
+- **Quoted string fields**: `context` and `activity` are always written as quoted CSV strings (`"..."`), with internal `"` doubled and CR/LF replaced by spaces, so every entry stays on one line.
+- **Hybrid interactive mode**: the first word of a line is *optional* as a command. If it is a Linux command, a builtin, or an alias/function from `~/.bashrc` or `~/.profile`, the line runs **and** is logged; otherwise it is only logged as a plain note, with no "command not found" noise. This works in both basic mode and taxonomy (context) mode.
+- **Colored output** (on a TTY): orange date, yellow tags, purple context, light-grey activity. Respects `NO_COLOR`.
+- **Race-free & concurrency safe**: creates log files with `O_CREAT|O_EXCL` (mode `0600`), rejects symlinks with `O_NOFOLLOW`, and writes each complete row with a single `O_APPEND` write.
+- **Configurable taxonomy**: up to 32 `[taxonomy]` entries in `lk.conf`, editable from inside LogKlerk with `lkset`.
 
 ## 🚀 Build & Installation
 
 **1. Assemble and link**
 
+From the directory that contains `src/`:
+
 ```bash
-as --64 -g lk.s -o lk.o
+as --64 -g -I src src/main.asm -o lk.o
 ld -z noexecstack -z relro -z now -o lk lk.o
 ```
+
+The source layout:
+
+```text
+src/
+├── main.asm            # core: config, logging, shell, lkset, interactive loop
+└── modules/
+    └── lkc.asm         # lkc log reader (included by main.asm)
+```
+
+> The `-I src` flag is required so `main.asm` can find `modules/lkc.asm`.
 
 **2. Put the binary on your `PATH`**
 
@@ -422,14 +439,21 @@ ld -z noexecstack -z relro -z now -o lk lk.o
 install -m 755 lk ~/.local/bin/lk
 ```
 
+**3. Runtime requirements**
+
+`bash` at `/bin/bash` is used to resolve commands and aliases. If it is missing, LogKlerk falls back to `/bin/sh` (no alias support).
+
 ## ⚙️ Configuration
 
-Configuration is read from `~/.config/logklerk/lk.conf` (falling back to built-in defaults if missing or empty):
+Configuration is read from `~/.config/logklerk/lk.conf` (falling back to built-in defaults if missing or empty). Defaults:
 
 ```ini
 [settings]
-DIR="$HOME/.local/share/logklerk/"
-TZ_OFFSET=0
+LK_DIR="$HOME/.local/share/logklerk/"
+LK_NAME_FORMAT="YYYYMMDD"
+LK_DEFAULT_FORMAT=".csv"
+LK_TAIL_LINES="3"
+LKSET_TAIL_LINES="3"
 [taxonomy]
 gg="Googling"
 gam="Google AI Mode"
@@ -439,35 +463,102 @@ diary="Diary"
 com="Commentary"
 ```
 
-- `DIR`: log directory (`$HOME` or leading `~` is expanded; trailing `/` is added automatically; created with `mkdir -p` mode `0700`).
-- `TZ_OFFSET`: timezone offset in seconds added to UTC time (clamped at `0` if negative).
-- `[taxonomy]`: maps shortcut keys to context names (up to 32 entries).
+| Key | Meaning | Default |
+| --- | --- | --- |
+| `LK_DIR` | Log directory (`$HOME` or a leading `~` is expanded; a trailing `/` is added; created with `mkdir -p`, mode `0700`) | `$HOME/.local/share/logklerk/` |
+| `LK_NAME_FORMAT` | Log file name pattern, computed for every entry (see below) | `YYYYMMDD` |
+| `LK_DEFAULT_FORMAT` | Log file extension (must start with `.`) | `.csv` |
+| `LK_TAIL_LINES` | Lines shown after logging (0-16) | `3` |
+| `LKSET_TAIL_LINES` | Taxonomy lines shown after `lkset` (0-32) | `3` |
+| `LK_COLOR_DATE` | Color of the date column | `orange` |
+| `LK_COLOR_TAGS` | Color of the tags column | `yellow` |
+| `LK_COLOR_CONTEXT` | Color of the context column | `purple` |
+| `LK_COLOR_ACTIVITY` | Color of the activity column | `grey` |
+
+**Colors:** `grey`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, `orange`, `purple`.
+
+**`LK_NAME_FORMAT` tokens:** `YYYY`, `MM`, `DD`, `hh` (or `HH`), `mm`, `ss`. Anything else is literal and `/` becomes `_`. The default `YYYYMMDD` gives one file per local day; a finer pattern such as `YYYYMMDDThhmmss` would start a new file for every entry. Because the name is recomputed per entry, a session that crosses local midnight rolls over to the next day's file automatically.
+
+**Time zone:** taken from `$TZ` (for example `TZ=Asia/Jakarta`) or `/etc/localtime`. The old `TZ_OFFSET` setting no longer exists.
 
 ## 📖 Usage
 
 ```bash
-lk -h | --help              # Show usage help
-lk                          # Interactive mode (exit, quit, or Ctrl-D to quit; shows `lk> ` on a TTY)
-lk <key> <text...>          # Log with context from [taxonomy]
-lk <command...>             # Unknown first token falls back to context "bash"
+lk -h | --help                    # Show usage help
+lk                                # Interactive mode (exit, quit, or Ctrl-D to quit; shows `lk> ` on a TTY)
+lk <key> <text...>                # Log with context from [taxonomy]
+lk lkc [all|filter] [asc|desc]    # Read logs (default: today, local time)
+lk lkset taxonomy key="Value"     # Add or change a taxonomy entry in lk.conf
+lk <command...>                   # Run a Linux command and log it as "bash"
 ```
+
+### Interactive Mode
+
+| You type | What happens | Logged as |
+| --- | --- | --- |
+| Plain text (`buy milk tomorrow`) | Logged only, nothing runs | `none,"","buy milk tomorrow"` |
+| A command or alias (`ls -la`, `hello`) | Runs in `bash` **and** is logged | `none,"bash","ls -la"` |
+| `cd ~/proj` | Built-in `cd`, changes the working directory | `none,"bash","cd ~/proj"` |
+| `gg` (a taxonomy key alone) | Enters that context; the prompt becomes `lk [[Googling]] >` | `lk,"lktags","gg"` |
+| `gg what is linux` | Logs one line under that key, without switching mode | `gg,"Googling","what is linux"` |
+| Text while in a taxonomy mode | Logged under the active key; a real command runs too | `gg,"Googling","..."` |
+| `lk` while in a taxonomy mode | Leaves the mode | `lk,"lktags","lk"` |
+| `lkc ...`, `lkset taxonomy ...` | Runs the built-in reader / taxonomy editor | `lk,"commands","lkc ..."` |
+| `exit` / `quit` / Ctrl-D | Leaves interactive mode | `lk,"commands","exit"` |
+
+Reserved words that cannot be used as taxonomy keys: `lk`, `lkc`, `lkset`, `cd`, `exit`, `quit`.
+
+> **Heads up:** in a taxonomy mode a line is run whenever its first word is a command. A note such as `cat videos are funny` would execute `cat`. Start the line with a word that is not a command, or leave the mode with `lk`.
+
+> **Aliases** from `~/.bashrc` are loaded through `bash -i`, which is only used when stdin is a TTY. In piped (non-TTY) use, commands and `~/.profile` still work but `~/.bashrc` aliases do not. One-shot CLI mode (`lk ls -la`) passes the arguments straight to `sh` and does not expand aliases.
+
+### Reading with `lkc`
+
+```bash
+lkc                      # Today's rows (local time)
+lkc all                  # Every row of every file
+lkc 2026                 # A year             (YYYY)
+lkc 202611               # A month            (YYYYMM)
+lkc 20261128             # A day              (YYYYMMDD)
+lkc 20261128T14          # An hour            (up to YYYYMMDDThhmmss)
+lkc 20261101-20261128    # An inclusive range (from-to)
+lkc 20261128 desc        # Newest file first (default: asc)
+```
+
+`all` cannot be combined with a date filter. Filters are prefix matches against the timestamp, so old rows from earlier versions (which had a `.SSS` suffix) are still matched.
 
 ### Data Layout & Format
 
-Log files are named `<timestamp>.csv` (derived from the first entry's timestamp) inside `DIR`:
+Log files are named from `LK_NAME_FORMAT` + `LK_DEFAULT_FORMAT` inside `LK_DIR`:
 
 ```text
 ~/.local/share/logklerk/
-└── 20261128T162600.csv
+└── 20261128.csv
 ```
 
-Example CSV content:
+Line format: `YYYYMMDDThhmmss,tags,"context","activity"`
 
 ```csv
-date,context,activity
-20261128T162600.123,Googling,x86-64 linux syscall clock_gettime
-20261128T162615.450,bash,ls -la
+date,tags,context,activity
+20261128T162600,gg,"Googling","x86-64 linux syscall clock_gettime"
+20261128T162615,none,"bash","ls -la"
+20261128T162630,none,"","a plain note, no command"
+20261128T162700,lk,"lktags","gg"
+20261128T162712,gg,"Googling","tzif file format"
 ```
+
+| Column | Meaning |
+| --- | --- |
+| `date` | Local time, ISO 8601 basic format `YYYYMMDDThhmmss` |
+| `tags` | The taxonomy key (`gg`, `diary`, ...), or `none` (shell line / plain note), or `lk` (LogKlerk's own commands and mode switches) |
+| `context` | Quoted string: the taxonomy context name, `bash` for commands, `lktags` / `commands` for `lk` entries, empty for plain notes |
+| `activity` | Quoted string: exactly what you typed |
+
+### Upgrading from v0.0.1 / v0.0.2
+
+- Rename `DIR` to `LK_DIR` in `lk.conf` if you still have the old key, and remove `TZ_OFFSET` (the local zone is used now).
+- The CSV header is `date,tags,context,activity`; rows written by older versions stay readable and still match `lkc` filters.
+- `lkc` without arguments now shows only today's rows; use `lkc all` for the old behaviour.
 
 ---
 
